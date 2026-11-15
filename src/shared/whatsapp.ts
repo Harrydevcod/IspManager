@@ -30,3 +30,9 @@ export type WhatsappTemplateData = {
 export function renderWhatsappTemplate(template: string, data: WhatsappTemplateData, companyName: string) {
   return renderMessageTemplate(template, data, companyName);
 }
+
+/** A ordem no texto do ISPM define a numeração usada pelo modelo da Meta. */
+export function numberMetaVariables(template: string): string {
+  let index = 0;
+  return template.replace(/\{[a-z_]+\}/gi, () => `{{${++index}}}`).replace(/\r\n/g, '\n').trim();
+}

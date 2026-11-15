@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -38,6 +38,7 @@ afterAll(() => {
   rmSync(dataDir, { recursive: true, force: true });
   delete process.env.ISPM_DATA_DIR;
 });
+afterEach(() => vi.unstubAllGlobals());
 
 /** 10:00 de Cabo Verde do dia UTC de hoje: os avisos só saem a partir das 08:00. */
 function daytime(): Date {
@@ -100,6 +101,30 @@ const outboxCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_outbox
 const noticesCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_notices').get() as { n: number }).n;
 
 describe('runOverdueNoticesIfDue', () => {
+  test('snapshots the approved Meta model and ordered values in the queue', async () => {
+    enableNotices();
+    setSetting('whatsappProvider', 'meta-cloud');
+    setSetting('metaPhoneNumberId', '1055');
+    setSetting('metaBusinessAccountId', '123');
+    setSetting('metaTemplateOverdue', 'aviso|pt_PT');
+    setSetting('whatsappOverdueTemplate', 'Caro {nome}: {valor}');
+    writeSecret(db, 'metaAccessToken', 'token');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => JSON.stringify({ data: [{ name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Caro {{1}}: {{2}}' }] }] }) })));
+    insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    expect(await runOverdueNoticesIfDue(daytime())).toMatchObject({ ran: true, enqueued: 1 });
+    const row = db.prepare('SELECT template_json FROM whatsapp_outbox').get() as { template_json: string };
+    expect(JSON.parse(row.template_json)).toEqual({ name: 'aviso', language: 'pt_PT', params: ['Ana', '2.500$00'] });
+  });
+  test('reports a mismatch and does not queue an unapproved or incompatible model', async () => {
+    enableNotices();
+    setSetting('whatsappProvider', 'meta-cloud'); setSetting('metaPhoneNumberId', '1055'); setSetting('metaBusinessAccountId', '123');
+    setSetting('metaTemplateOverdue', 'aviso|pt_PT'); setSetting('whatsappOverdueTemplate', '{nome} {valor}');
+    writeSecret(db, 'metaAccessToken', 'token');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => JSON.stringify({ data: [{ name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: '{{1}}' }] }] }) })));
+    insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    expect(await runOverdueNoticesIfDue(daytime())).toMatchObject({ enqueued: 0, templateErrors: [{ stage: 'overdue' }] });
+    expect(outboxCount()).toBe(0);
+  });
   test('skips entirely when the toggle is disabled', async () => {
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
 

@@ -17,6 +17,8 @@ function markup(overrides: Partial<SettingsFormState>) {
     whatsappInvoiceReadyTemplate: '',
     whatsappReceiptTemplate: '',
     whatsappOverdueTemplate: '',
+    whatsappReminderTemplate: '',
+    whatsappWarningTemplate: '',
     whatsappSuspensionTemplate: '',
     ...overrides
   } as SettingsFormState;

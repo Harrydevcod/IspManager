@@ -2,8 +2,8 @@
  * Transporte da WhatsApp Cloud API oficial da Meta (Graph API).
  *
  * Limite a ter presente: a Meta só aceita texto livre até 24 h depois de o
- * cliente escrever à empresa. Fora dessa janela exige um modelo aprovado, que
- * o ISPM ainda não envia (ver ADR 0013); o erro 131047 diz isso mesmo.
+ * cliente escrever à empresa. Fora dessa janela exige um modelo aprovado;
+ * o erro 131047 diz isso mesmo.
  */
 
 import type { WhatsappSendResult } from './whatsapp-provider';
@@ -72,6 +72,55 @@ async function sendMessage(phoneNumberId: string, accessToken: string, to: strin
 
 export async function sendMetaCloudText(phoneNumberId: string, accessToken: string, to: string, body: string): Promise<WhatsappSendResult> {
   return sendMessage(phoneNumberId, accessToken, to, { type: 'text', text: { preview_url: false, body } });
+}
+
+export async function sendMetaCloudTemplate(
+  phoneNumberId: string, accessToken: string, to: string,
+  template: { name: string; language: string; params: string[] }
+): Promise<WhatsappSendResult> {
+  return sendMessage(phoneNumberId, accessToken, to, {
+    type: 'template',
+    template: {
+      name: template.name,
+      language: { code: template.language },
+      ...(template.params.length ? { components: [{ type: 'body', parameters: template.params.map((text) => ({ type: 'text', text })) }] } : {})
+    }
+  });
+}
+
+export async function listMetaCloudTemplates(
+  businessAccountId: string, accessToken: string
+): Promise<{ ok: true; templates: Array<{ name: string; language: string; body: string }> } | { ok: false; reason: string }> {
+  const templates: Array<{ name: string; language: string; body: string }> = [];
+  let cursor: string | undefined;
+  const seen = new Set<string>();
+  try {
+    do {
+      const query = new URLSearchParams({ fields: 'name,language,status,components', limit: '100' });
+      if (cursor) query.set('after', cursor);
+      const response = await fetch(`${GRAPH_URL}/${encodeURIComponent(businessAccountId)}/message_templates?${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10_000)
+      });
+      const result = await readJson(response);
+      if (!response.ok) return { ok: false, reason: describeMetaFailure(result) };
+      if (!result || typeof result !== 'object' || !Array.isArray((result as { data?: unknown }).data)) return { ok: false, reason: 'Resposta invalida da Meta' };
+      const data = result as { data: Array<{ name?: unknown; language?: unknown; status?: unknown; components?: Array<{ type?: unknown; text?: unknown }> }>; paging?: { next?: unknown; cursors?: { after?: unknown } } };
+      for (const item of data.data) {
+        const body = Array.isArray(item.components) ? item.components.find((c) => c.type === 'BODY')?.text : undefined;
+        const supported = Array.isArray(item.components) && item.components.every((c) => c && (c.type === 'BODY' || c.type === 'FOOTER'));
+        if (supported && item.status === 'APPROVED' && typeof item.name === 'string' && typeof item.language === 'string' && typeof body === 'string') templates.push({ name: item.name, language: item.language, body });
+      }
+      const next = data.paging?.next && data.paging.cursors?.after;
+      if (data.paging?.next && (typeof next !== 'string' || !next)) return { ok: false, reason: 'Paginacao invalida da Meta' };
+      cursor = typeof next === 'string' ? next : undefined;
+      if (cursor && seen.has(cursor)) return { ok: false, reason: 'Paginacao invalida da Meta' };
+      if (cursor) seen.add(cursor);
+      if (seen.size > 100) return { ok: false, reason: 'Demasiadas paginas de modelos da Meta' };
+    } while (cursor);
+    return { ok: true, templates };
+  } catch {
+    return { ok: false, reason: 'Nao foi possivel contactar a Meta' };
+  }
 }
 
 /** Dois passos: a Meta não aceita o ficheiro na mensagem, só o id de um carregamento. */

@@ -15,6 +15,10 @@ import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsap
 import { businessDay, businessHour, cutDate, NOTICE_SEND_FROM_HOUR, sqlBusinessDate } from '../../shared/business-day';
 import { autoSuspensionGraceDays } from './auto-suspension';
 import { SUSPENSION_NOTICE_LEAD_DAYS } from '../../shared/upcoming-suspension';
+import { listMetaCloudTemplates } from './meta-cloud';
+import { readSecret } from './secrets';
+import { prepareMetaTemplate } from './meta-template';
+import type { WhatsappTemplate } from './whatsapp-provider';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
 const DEFAULT_REMINDER_DAYS = 3;
@@ -106,7 +110,7 @@ export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[
 
 export type OverdueNoticesRun =
   | { skipped: true; reason: string }
-  | { ran: true; date: string; enqueued: number; skipped: number };
+  | { ran: true; date: string; enqueued: number; skipped: number; templateErrors?: Array<{ stage: NoticeType; reason: string }> };
 
 function getSetting(key: string): string {
   const db = getSqliteDatabase();
@@ -170,7 +174,8 @@ export async function runOverdueNoticesIfDue(
   if (!whatsappChannelEnabled(getSqliteDatabase())) {
     return { skipped: true, reason: 'canal WhatsApp desligado' };
   }
-  if (!resolveWhatsappProvider(getSqliteDatabase())) {
+  const provider = resolveWhatsappProvider(getSqliteDatabase());
+  if (!provider) {
     return { skipped: true, reason: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` };
   }
 
@@ -183,6 +188,17 @@ export async function runOverdueNoticesIfDue(
   }
 
   const db = getSqliteDatabase();
+  const metaKeys: Record<NoticeType, string> = { reminder: 'metaTemplateReminder', overdue: 'metaTemplateOverdue', warning: 'metaTemplateWarning', suspension: 'metaTemplateSuspension' };
+  const selections = Object.fromEntries(Object.entries(metaKeys).map(([stage, key]) => [stage, getSetting(key)])) as Record<NoticeType, string>;
+  let approved: Array<{ name: string; language: string; body: string }> = [];
+  if (provider.id === 'meta-cloud' && Object.values(selections).some(Boolean)) {
+    const account = getSetting('metaBusinessAccountId');
+    const token = readSecret(db, 'metaAccessToken');
+    if (!/^\d{1,32}$/.test(account) || !token) return { skipped: true, reason: 'Conta WhatsApp Business nao configurada' };
+    const result = await listMetaCloudTemplates(account, token);
+    if (!result.ok) return { skipped: true, reason: result.reason };
+    approved = result.templates;
+  }
   const funnel = loadFunnel();
   const grace = autoSuspensionGraceDays(db);
   const cooldownDays = Number(getSetting('noticeCooldownDays')) || DEFAULT_COOLDOWN_DAYS;
@@ -208,6 +224,7 @@ export async function runOverdueNoticesIfDue(
 
   let enqueued = 0;
   let skipped = 0;
+  const templateErrors = new Map<NoticeType, string>();
 
   const eligible = candidates.filter((row) => {
     if (row.whatsappOptOut) { skipped += 1; return false; }
@@ -224,9 +241,8 @@ export async function runOverdueNoticesIfDue(
     if (alreadySent) { skipped += 1; continue; }
 
     const to = normalizeWhatsappPhone(row.phone || '');
-    const body = renderWhatsappTemplate(
-      templateFor(type),
-      {
+    const source = templateFor(type);
+    const data = {
         fullName: row.clientName,
         clientCode: row.clientCode,
         phone: row.phone,
@@ -238,15 +254,22 @@ export async function runOverdueNoticesIfDue(
         suspensionDays: grace + 1,
         suspensionDate: cutDate(row.dueDate, grace, todayIso),
         paymentLink: row.paymentLink
-      },
-      companyName
-    );
+      };
+    const body = renderWhatsappTemplate(source, data, companyName);
+    let template: WhatsappTemplate | undefined;
+    if (provider.id === 'meta-cloud' && selections[type]) {
+      const selected = approved.find((item) => `${item.name}|${item.language}` === selections[type]);
+      if (!selected) { templateErrors.set(type, 'Modelo selecionado nao esta aprovado ou nao e suportado'); skipped += 1; continue; }
+      const prepared = prepareMetaTemplate(selected, source, data, companyName);
+      if (!prepared.ok) { templateErrors.set(type, prepared.reason); skipped += 1; continue; }
+      template = prepared.template;
+    }
 
-    const outboxId = enqueueWhatsapp({ toPhone: to, kind: 'text', body, clientId: row.clientId, origin: 'auto' });
+    const outboxId = enqueueWhatsapp({ toPhone: to, kind: 'text', body, clientId: row.clientId, origin: 'auto', template });
     enqueued += 1;
     logNotice.run(row.paymentId, row.clientId, type, to, body, outboxId);
   }
 
   writeSetting(LAST_RUN_KEY, todayIso);
-  return { ran: true, date: todayIso, enqueued, skipped };
+  return { ran: true, date: todayIso, enqueued, skipped, ...(templateErrors.size ? { templateErrors: Array.from(templateErrors, ([stage, reason]) => ({ stage, reason })) } : {}) };
 }

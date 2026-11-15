@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { sendMetaCloudDocument, sendMetaCloudText } from './meta-cloud';
+import { listMetaCloudTemplates, sendMetaCloudDocument, sendMetaCloudText, sendMetaCloudTemplate } from './meta-cloud';
 
 type Call = { url: string; init: RequestInit };
 
@@ -19,6 +19,59 @@ function stubGraph(...replies: Array<{ status: number; body: unknown }>) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+test('sends an approved template with ordered body parameters', async () => {
+  const calls = stubGraph({ status: 200, body: { messages: [{ id: 'wamid.template' }] } });
+  const result = await sendMetaCloudTemplate('1055', 'tok', '+2389912233', {
+    name: 'aviso_fatura', language: 'pt_PT', params: ['Ana', '2000 CVE']
+  });
+  expect(result).toEqual({ ok: true, messageId: 'wamid.template' });
+  expect(JSON.parse(calls[0].init.body as string)).toMatchObject({
+    to: '2389912233', type: 'template', template: {
+      name: 'aviso_fatura', language: { code: 'pt_PT' },
+      components: [{ type: 'body', parameters: [{ type: 'text', text: 'Ana' }, { type: 'text', text: '2000 CVE' }] }]
+    }
+  });
+});
+
+test('lists approved templates using the business account and bearer token', async () => {
+  const calls = stubGraph({ status: 200, body: { data: [
+    { name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá {{1}}' }] },
+    { name: 'pendente', language: 'pt_PT', status: 'PENDING', components: [] }
+  ] } });
+  const result = await listMetaCloudTemplates('123', 'tok');
+  expect(result).toMatchObject({ ok: true, templates: [{ name: 'aviso', language: 'pt_PT', body: 'Olá {{1}}' }] });
+  expect(calls[0].url).toContain('/123/message_templates');
+  expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+});
+
+test('does not expose templates requiring unsupported header or button parameters', async () => {
+  stubGraph({ status: 200, body: { data: [
+    { name: 'imagem', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'HEADER', format: 'IMAGE' }, { type: 'BODY', text: 'Olá' }] },
+    { name: 'texto', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá' }] }
+  ] } });
+  expect(await listMetaCloudTemplates('123', 'tok')).toMatchObject({ ok: true, templates: [{ name: 'texto' }] });
+});
+
+test('follows a cursor without sending credentials to the paging URL', async () => {
+  const calls = stubGraph(
+    { status: 200, body: { data: [], paging: { next: 'https://untrusted.example/', cursors: { after: 'cursor-1' } } } },
+    { status: 200, body: { data: [{ name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá' }] }] } }
+  );
+  expect(await listMetaCloudTemplates('123', 'tok')).toMatchObject({ ok: true, templates: [{ name: 'aviso' }] });
+  expect(calls[1].url).toContain('graph.facebook.com/');
+  expect(calls[1].url).toContain('after=cursor-1');
+});
+
+test('rejects malformed Graph responses instead of treating them as an empty list', async () => {
+  stubGraph({ status: 200, body: { data: null } });
+  expect(await listMetaCloudTemplates('123', 'tok')).toMatchObject({ ok: false });
+});
+
+test('does not silently return an incomplete template list when pagination is malformed', async () => {
+  stubGraph({ status: 200, body: { data: [], paging: { next: 'https://graph.facebook.com/next' } } });
+  expect(await listMetaCloudTemplates('123', 'tok')).toMatchObject({ ok: false });
 });
 
 describe('sendMetaCloudText', () => {

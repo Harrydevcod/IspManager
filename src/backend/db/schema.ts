@@ -634,6 +634,7 @@ export const whatsappOutbox = sqliteTable('whatsapp_outbox', {
   toPhone: text('to_phone').notNull(),
   kind: text('kind').notNull().default('text'),
   body: text('body'),
+  templateJson: text('template_json'),
   docPaymentId: integer('doc_payment_id'),
   docKind: text('doc_kind'),
   clientId: integer('client_id'),

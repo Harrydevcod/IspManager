@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceite e implementado. A parte dos modelos aprovados da Meta fica por fazer (ver "O que fica de fora").
+Aceite e implementado, incluindo modelos de texto aprovados da Meta.
 
 ## Contexto
 
@@ -41,14 +41,29 @@ O token da Meta é mais uma credencial do cofre (`metaAccessToken`), com o mesmo
 
 ## O que fica de fora
 
-- **Modelos aprovados da Meta.** Com a Meta ativa, um aviso fora da janela de 24 h falha com um erro
-  que diz isso mesmo (código 131047 da Graph API). Suportá-los pede guardar no outbox o evento e as
-  variáveis em vez do texto já montado, e configurar o nome do modelo por evento.
+- **Componentes avançados dos modelos.** O ISPM suporta modelos com corpo de texto e rodapé;
+  modelos com cabeçalho, botões ou outros componentes não são apresentados para seleção.
+  O envio de documentos continua sujeito à janela de 24 horas.
 - **Webhooks de estado.** Com a Meta, as mensagens ficam em "enviado"; não há entregue nem lido.
+
+## Modelos aprovados
+
+O administrador configura o ID da conta WhatsApp Business e consulta os modelos
+aprovados com o token guardado no cofre. A consulta requer a permissão
+`whatsapp_business_management`. Para cada evento, escolhe o nome e o idioma e
+compara o texto aprovado com o texto do ISPM. Os textos têm de coincidir depois
+de numerar os campos. Os campos do ISPM são preenchidos
+pela ordem em que aparecem; o número e a sequência dos parâmetros têm de coincidir.
+
+Antes de criar um aviso, o ISPM confirma que o modelo continua aprovado. A fila
+guarda o nome, o idioma e os valores concretos para que uma alteração posterior
+não os troque. Uma incompatibilidade impede o envio e é registada no resultado
+do automatismo. Uma mensagem preparada para a Meta não é enviada pelo UltraMsg
+se o fornecedor mudar enquanto ela está na fila.
 
 ## Consequências
 
 - Acrescentar um fornecedor é implementar a interface e um ramo na fábrica; nada mais muda.
-- Sem migração: `whatsappProvider`, `metaPhoneNumberId` e `metaAccessToken` vivem em `app_settings`, e
-  a coluna `whatsapp_outbox.provider` já existia.
+- As opções do fornecedor vivem em `app_settings` e o token no cofre. A migração
+  0105 acrescenta à fila o modelo e os valores preparados para o envio.
 - A versão da Graph API está fixa em `meta-cloud.ts` e tem de ser revista quando a Meta a retirar.

@@ -5,6 +5,8 @@ import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 import {
   fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappReceiptTemplate,
   fallbackWhatsappSuspensionTemplate,
   fallbackWhatsappTemplate,
   renderWhatsappTemplate
@@ -16,11 +18,17 @@ import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsap
 import { autoSuspensionGraceDays } from '../lib/auto-suspension';
 import { loadFunnel } from '../lib/notices';
 import { cutDate } from '../../shared/business-day';
+import { listMetaCloudTemplates } from '../lib/meta-cloud';
+import { readSecret } from '../lib/secrets';
+import { prepareMetaTemplate } from '../lib/meta-template';
+import type { WhatsappTemplate } from '../lib/whatsapp-provider';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
-  body: z.string().trim().min(1).max(4096)
-});
+  body: z.string().trim().min(1).max(4096),
+  paymentId: z.number().int().positive().optional(),
+  event: z.enum(['invoice', 'receipt', 'overdue', 'suspension']).optional()
+}).refine((value) => Boolean(value.paymentId) === Boolean(value.event));
 
 const notifyOverdueSchema = z.object({
   dryRun: z.boolean().optional().default(false),
@@ -80,6 +88,15 @@ function replyWithManualOutboxResult(
 export async function registerWhatsappRoutes(app: FastifyInstance) {
   const canSendMessages = { preHandler: requireRole(['admin', 'operator']) };
 
+  app.get('/api/whatsapp/meta/templates', { preHandler: requireRole(['admin']) }, async (_request, reply) => {
+    const account = getSetting('metaBusinessAccountId');
+    const token = readSecret(getSqliteDatabase(), 'metaAccessToken');
+    if (!/^\d{1,32}$/.test(account) || !token) return reply.status(409).send({ error: 'Configure a conta WhatsApp Business e o token da Meta' });
+    const result = await listMetaCloudTemplates(account, token);
+    if (!result.ok) return reply.status(502).send({ error: result.reason });
+    return { templates: result.templates };
+  });
+
   app.post('/api/whatsapp/send', canSendMessages, async (request, reply) => {
     const parsed = sendWhatsappSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -99,7 +116,33 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Telefone WhatsApp invalido' });
     }
 
-    const id = enqueueWhatsapp({ toPhone: to, kind: 'text', body: parsed.data.body, origin: 'manual' });
+    let metaTemplate: WhatsappTemplate | undefined;
+    if (provider.id === 'meta-cloud' && parsed.data.paymentId && parsed.data.event) {
+      const eventKeys = { invoice: ['metaTemplateInvoice', 'whatsappInvoiceReadyTemplate', fallbackWhatsappInvoiceReadyTemplate], receipt: ['metaTemplateReceipt', 'whatsappReceiptTemplate', fallbackWhatsappReceiptTemplate], overdue: ['metaTemplateOverdue', 'whatsappOverdueTemplate', fallbackWhatsappOverdueTemplate], suspension: ['metaTemplateSuspension', 'whatsappSuspensionTemplate', fallbackWhatsappSuspensionTemplate] } as const;
+      const [selectionKey, sourceKey, fallback] = eventKeys[parsed.data.event];
+      const selection = getSetting(selectionKey);
+      if (selection) {
+        const db = getSqliteDatabase();
+        const payment = db.prepare(`SELECT c.id AS clientId, c.full_name AS fullName, c.client_code AS clientCode, c.phone, py.amount_cve AS amountCve, py.due_date AS dueDate, py.reference_month AS referenceMonth, py.invoice_number AS invoiceNumber, py.receipt_number AS receiptNumber, ${openPaymentLinkSql('py')} AS paymentLink FROM payments py JOIN clients c ON c.id = py.client_id WHERE py.id = ?`).get(parsed.data.paymentId) as { clientId: number; fullName: string; clientCode: string; phone: string | null; amountCve: number; dueDate: string; referenceMonth: string; invoiceNumber: string | null; receiptNumber: string | null; paymentLink: string | null } | undefined;
+        if (!payment || isSystemClient(db, payment.clientId) || normalizeWhatsappPhone(payment.phone || '') !== to) return reply.status(409).send({ error: 'Pagamento ou telefone nao corresponde ao cliente' });
+        const grace = autoSuspensionGraceDays(db);
+        const data = { ...payment, daysOverdue: Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000)), suspensionDays: grace + 1, suspensionDate: cutDate(payment.dueDate, grace) };
+        const source = getSetting(sourceKey) || fallback;
+        const company = getSetting('companyName') || 'ISPM';
+        if (renderWhatsappTemplate(source, data, company).trim() !== parsed.data.body) return reply.status(409).send({ error: 'A mensagem mudou; atualize a fatura antes de enviar' });
+        const account = getSetting('metaBusinessAccountId');
+        const token = readSecret(db, 'metaAccessToken');
+        if (!/^\d{1,32}$/.test(account) || !token) return reply.status(409).send({ error: 'Conta WhatsApp Business nao configurada' });
+        const models = await listMetaCloudTemplates(account, token);
+        if (!models.ok) return reply.status(502).send({ error: models.reason });
+        const selected = models.templates.find((model) => `${model.name}|${model.language}` === selection);
+        if (!selected) return reply.status(409).send({ error: 'Modelo selecionado nao esta aprovado ou nao e suportado' });
+        const prepared = prepareMetaTemplate(selected, source, data, company);
+        if (!prepared.ok) return reply.status(409).send({ error: prepared.reason });
+        metaTemplate = prepared.template;
+      }
+    }
+    const id = enqueueWhatsapp({ toPhone: to, kind: 'text', body: parsed.data.body, origin: 'manual', template: metaTemplate });
     await runWhatsappOutboxIfDue(new Date(), undefined, { onlyId: id });
     const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(id) as ManualOutboxStatus;
     const failed = replyWithManualOutboxResult(reply, row, 'Falha no envio');
@@ -233,6 +276,17 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       ? getSetting('whatsappSuspensionTemplate') || fallbackWhatsappSuspensionTemplate
       : getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
     const companyName = getSetting('companyName') || 'ISPM';
+    const metaSelection = provider.id === 'meta-cloud' ? getSetting(parsed.data.noticeType === 'suspension' ? 'metaTemplateSuspension' : 'metaTemplateOverdue') : '';
+    let selectedModel: { name: string; language: string; body: string } | undefined;
+    if (metaSelection) {
+      const account = getSetting('metaBusinessAccountId');
+      const token = readSecret(db, 'metaAccessToken');
+      if (!/^\d{1,32}$/.test(account) || !token) return reply.status(409).send({ error: 'Conta WhatsApp Business nao configurada' });
+      const models = await listMetaCloudTemplates(account, token);
+      if (!models.ok) return reply.status(502).send({ error: models.reason });
+      selectedModel = models.templates.find((model) => `${model.name}|${model.language}` === metaSelection);
+      if (!selectedModel) return reply.status(409).send({ error: 'Modelo selecionado nao esta aprovado ou nao e suportado' });
+    }
 
     const logNotice = db.prepare(`
       INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, error)
@@ -246,9 +300,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     for (let i = 0; i < eligible.length; i++) {
       const row = eligible[i];
       const to = normalizeWhatsappPhone(row.phone || '');
-      const body = renderWhatsappTemplate(
-        template,
-        {
+      const messageData = {
           fullName: row.clientName,
           clientCode: row.clientCode,
           phone: row.phone,
@@ -260,10 +312,19 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
           suspensionDays: grace + 1,
           suspensionDate: cutDate(row.dueDate, grace),
           paymentLink: row.paymentLink
-        },
-        companyName
-      );
-      const result = await provider.sendText({ to, body });
+        };
+      const body = renderWhatsappTemplate(template, messageData, companyName);
+      let metaTemplate: WhatsappTemplate | undefined;
+      if (selectedModel) {
+        const prepared = prepareMetaTemplate(selectedModel, template, messageData, companyName);
+        if (!prepared.ok) {
+          logNotice.run(row.paymentId, row.clientId, parsed.data.noticeType, to, body, 'failed', prepared.reason);
+          const entry: NotifyEntry = { paymentId: row.paymentId, clientName: row.clientName, status: 'failed', reason: prepared.reason };
+          failed.push(entry); details.push(entry); continue;
+        }
+        metaTemplate = prepared.template;
+      }
+      const result = await provider.sendText({ to, body, ...(metaTemplate ? { template: metaTemplate } : {}) });
       if (result.ok) {
         sent += 1;
         logNotice.run(row.paymentId, row.clientId, parsed.data.noticeType, to, body, 'sent', null);

@@ -40,7 +40,7 @@ export function renderWhatsappMessage(template: string, client: WhatsappMessageD
   return renderWhatsappTemplate(template, { ...context, ...client }, companyName);
 }
 
-export async function sendWhatsapp(phone: string | null, body: string) {
+export async function sendWhatsapp(phone: string | null, body: string, payment?: { paymentId: number; event: 'invoice' | 'receipt' | 'overdue' | 'suspension' }) {
   const normalizedPhone = normalizeWhatsappPhone(phone);
   if (!normalizedPhone) {
     throw new Error('Telefone WhatsApp invalido');
@@ -51,7 +51,8 @@ export async function sendWhatsapp(phone: string | null, body: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       phone: normalizedPhone,
-      body
+      body,
+      ...payment
     })
   });
 

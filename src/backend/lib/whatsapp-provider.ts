@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { sendMetaCloudDocument, sendMetaCloudText } from './meta-cloud';
+import { sendMetaCloudDocument, sendMetaCloudText, sendMetaCloudTemplate } from './meta-cloud';
 import { readSecret } from './secrets';
 import { fetchUltraMsgSentMessages, mapAckToStatus, sendDocumentViaUltraMsg, sendViaUltraMsg } from './ultramsg';
 
@@ -14,6 +14,7 @@ export type WhatsappSendResult =
   | { ok: false; reason: string; details?: unknown };
 
 export type WhatsappDeliveryStatus = 'sent' | 'delivered' | 'read';
+export type WhatsappTemplate = { name: string; language: string; params: string[] };
 
 export const WHATSAPP_PROVIDER_IDS = ['ultramsg', 'meta-cloud'] as const;
 export type WhatsappProviderId = (typeof WHATSAPP_PROVIDER_IDS)[number];
@@ -26,7 +27,7 @@ const LABELS: Record<WhatsappProviderId, string> = {
 export interface WhatsappProvider {
   readonly id: WhatsappProviderId;
   readonly label: string;
-  sendText(message: { to: string; body: string }): Promise<WhatsappSendResult>;
+  sendText(message: { to: string; body: string; template?: WhatsappTemplate }): Promise<WhatsappSendResult>;
   sendDocument(message: { to: string; document: Buffer; filename: string; caption: string }): Promise<WhatsappSendResult>;
   /**
    * Estado de entrega das mensagens recentes, por id do fornecedor. Só existe
@@ -90,7 +91,7 @@ export function resolveWhatsappProvider(db: Database.Database): WhatsappProvider
     return {
       id,
       label: LABELS[id],
-      sendText: ({ to, body }) => sendMetaCloudText(phoneNumberId, accessToken, to, body),
+      sendText: ({ to, body, template }) => template ? sendMetaCloudTemplate(phoneNumberId, accessToken, to, template) : sendMetaCloudText(phoneNumberId, accessToken, to, body),
       sendDocument: ({ to, document, filename, caption }) =>
         sendMetaCloudDocument(phoneNumberId, accessToken, to, document, filename, caption)
     };

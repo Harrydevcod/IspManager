@@ -66,6 +66,22 @@ const statusOf = (id: number) =>
   (db.prepare('SELECT status FROM whatsapp_outbox WHERE id = ?').get(id) as { status: string }).status;
 
 describe('enqueueWhatsapp + runWhatsappOutboxIfDue', () => {
+  test('persists template parameters until the queued message is sent', async () => {
+    const received: unknown[] = [];
+    const sendText: WhatsappProvider['sendText'] = async (message) => { received.push(message); return { ok: true }; };
+    const template = { name: 'aviso', language: 'pt_PT', params: ['Ana', '2000'] };
+    const id = outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'Olá Ana', template });
+    await outbox.runWhatsappOutboxIfDue(new Date(), depsWith({ id: 'meta-cloud', sendText }));
+    expect(received).toEqual([{ to: '+2389912233', body: 'Olá Ana', template }]);
+    expect(statusOf(id)).toBe('sent');
+  });
+  test('never sends an approved Meta template through another provider', async () => {
+    let called = false;
+    const id = outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'ola', template: { name: 'aviso', language: 'pt_PT', params: [] } });
+    await outbox.runWhatsappOutboxIfDue(new Date(), depsWith({ sendText: async () => { called = true; return { ok: true }; } }));
+    expect(called).toBe(false);
+    expect(statusOf(id)).toBe('failed');
+  });
   test('enqueue creates a pending row', () => {
     const id = outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'ola' });
     const row = db.prepare('SELECT status, attempts FROM whatsapp_outbox WHERE id = ?').get(id) as { status: string; attempts: number };
