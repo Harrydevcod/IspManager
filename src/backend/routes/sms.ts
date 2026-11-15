@@ -7,8 +7,10 @@ import { cutDate } from '../../shared/business-day';
 import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { confirmSessionPassword, requireRole } from './auth';
-import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
-import { readCompanionPresence, requestCompanionSnapshotPush, SEALED_KEY } from '../lib/companion-sync';
+import { companionTransport, discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
+import { readCompanionPresence, RELAY_PHONE_KEY, requestCompanionSnapshotPush, SEALED_KEY } from '../lib/companion-sync';
+import { normalizeRelayUrl, registerRelayMailbox, relayConfig } from '../lib/sms-relay';
+import { recordAudit } from '../lib/audit';
 import { runCompanionTick } from '../lib/companion-tick';
 import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
@@ -19,6 +21,14 @@ import { cancelPairingSession, confirmPairingSession, readPairingSession, startP
 const paymentSmsSchema = z.object({
   eventType: z.enum(['invoice_issued', 'receipt_confirmed', 'payment_overdue', 'suspension_notice'])
 });
+
+const relaySchema = z.object({
+  url: z.string().max(300),
+  adminKey: z.string().max(200).optional()
+});
+
+/** Há quanto tempo a última resposta ainda conta como "ligado pelo relé". */
+const RELAY_FRESH_MS = 3 * 60_000;
 
 const reportQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
@@ -60,17 +70,80 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     const verification = configured && enabled
       ? await verifyCompanionPairing(1200)
       : { reachable: false, paired: false };
+    const presence = readCompanionPresence();
+    // Fora da rede local mas a responder pelo relé (ADR 0024).
+    const viaRelay = enabled && configured && !verification.reachable && companionTransport() === 'relay'
+      && Boolean(presence.lastSeen) && Date.now() - Date.parse(presence.lastSeen!) < RELAY_FRESH_MS;
     return {
       enabled,
       configured,
       reachable: verification.reachable,
       paired: verification.paired,
       active: enabled && verification.reachable && verification.paired,
+      viaRelay,
       baseUrl,
       deviceName,
       // Última vez que o telemóvel respondeu ao desktop e o que disse de si (bateria, sinal, versão).
-      ...readCompanionPresence()
+      ...presence
     };
+  });
+
+  const relayView = () => {
+    const url = getSetting('smsRelayUrl');
+    return {
+      url,
+      adminKeyConfigured: readSecret(getSqliteDatabase(), 'smsRelayAdminKey') !== '',
+      // O telemóvel só usa o relé depois de receber o endereço pelo canal do pareamento.
+      phoneSynced: url !== '' && getSetting(RELAY_PHONE_KEY) === url,
+      // Pareamentos antigos (v1) não têm o segredo de onde saem as chaves do relé.
+      needsPairing: getSetting('smsCompanionPairingVersion') !== '2',
+      // Só a app 0.12.0+ sabe consultar o relé.
+      appVersion: readCompanionPresence().device?.appVersion ?? null
+    };
+  };
+
+  app.get('/api/sms/relay', adminOnly, async () => relayView());
+
+  app.put('/api/sms/relay', adminOnly, async (request, reply) => {
+    const parsed = relaySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido.' });
+    const db = getSqliteDatabase();
+    const wanted = parsed.data.url.trim();
+    const url = wanted ? normalizeRelayUrl(wanted) : '';
+    if (url === null) return reply.status(400).send({ error: 'O endereço do relé tem de começar por https://' });
+    const newKey = parsed.data.adminKey?.trim() ?? '';
+    if (newKey && !canStoreSecrets()) {
+      return reply.status(409).send({ error: 'Cofre de credenciais trancado: não é possível guardar a chave nesta sessão.' });
+    }
+    const adminKey = newKey || readSecret(db, 'smsRelayAdminKey');
+    if (url && !adminKey) return reply.status(400).send({ error: 'Falta a chave de administração do relé.' });
+
+    const previous = getSetting('smsRelayUrl');
+    setSetting('smsRelayUrl', url);
+    const config = url ? relayConfig(db) : null;
+    if (config) {
+      // Cria já a caixa deste pareamento: uma chave errada vê-se aqui, não no primeiro SMS.
+      let status: number;
+      try {
+        status = await registerRelayMailbox(config, adminKey);
+      } catch {
+        setSetting('smsRelayUrl', previous);
+        return reply.status(502).send({ error: 'O relé não respondeu nesse endereço.' });
+      }
+      if (status !== 200 && status !== 201) {
+        setSetting('smsRelayUrl', previous);
+        return reply.status(502).send({ error: status === 401 ? 'O relé recusou a chave de administração.' : `O relé respondeu ${status}.` });
+      }
+    }
+    if (newKey) writeSecret(db, 'smsRelayAdminKey', newKey);
+    if (!url) writeSecret(db, 'smsRelayAdminKey', '');
+    recordAudit(request, {
+      action: 'update',
+      entityType: 'settings',
+      summary: url ? 'Configurou o relé do telemóvel SMS' : 'Removeu o relé do telemóvel SMS',
+      metadata: { relayUrl: url }
+    });
+    return relayView();
   });
 
   app.get('/api/sms/report', adminOnly, async (request, reply) => {
@@ -198,6 +271,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionLastPush', '');
     // A new phone proves again that it decrypts before anything goes sealed.
     setSetting(SEALED_KEY, '');
+    // O telemóvel novo ainda não sabe onde fica o relé.
+    setSetting(RELAY_PHONE_KEY, '');
     requestCompanionSnapshotPush();
     return { ok: true, baseUrl, deviceName: model };
   });
@@ -212,6 +287,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionDeviceStatus', '');
     setSetting('smsCompanionLastPush', '');
     setSetting(SEALED_KEY, '');
+    setSetting(RELAY_PHONE_KEY, '');
     return { ok: true };
   });
 

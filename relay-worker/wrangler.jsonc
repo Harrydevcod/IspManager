@@ -1,0 +1,12 @@
+{
+  "name": "ispm-sms-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-01",
+  "workers_dev": true,
+  // Nada de registos: os pedidos levam identificadores de caixas e credenciais.
+  "observability": { "enabled": false },
+  "durable_objects": {
+    "bindings": [{ "name": "MAILBOX", "class_name": "Mailbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }]
+}

@@ -12,7 +12,7 @@ export type SmsPresence = {
   warnings: string[];
 };
 
-function olderVersion(version: string, expected: string): boolean {
+export function olderVersion(version: string, expected: string): boolean {
   const a = version.split('.').map((n) => Number.parseInt(n, 10) || 0);
   const b = expected.split('.').map((n) => Number.parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
@@ -84,7 +84,7 @@ export function describeSmsPresence(status: SmsStatus | null, now = Date.now()):
   return { tone: warnings.length ? 'warn' : 'success', line: parts.join(' · '), warnings };
 }
 
-export type SmsPairingState = 'unpaired' | 'waiting' | 'found' | 'expired' | 'active' | 'mismatch' | 'unreachable' | 'off';
+export type SmsPairingState = 'unpaired' | 'waiting' | 'found' | 'expired' | 'active' | 'relay' | 'mismatch' | 'unreachable' | 'off';
 
 /** A sessão de pareamento v2 aberta neste ecrã (QR à vista ou código por confirmar). */
 export type SmsPairingSession = { state: 'waiting' | 'found' | 'expired'; model?: string };
@@ -115,6 +115,7 @@ export function describeSmsPairing(status: SmsStatus | null, session: SmsPairing
   // Nada a resolver: parear de novo fica disponível, mas não chama a atenção.
   if (status.enabled === false) return view('off', 'muted', `${name} · ligação desligada`, 'none');
   if (status.active) return view('active', 'success', `Ativo: ${name} (${status.baseUrl})`, 'none');
+  if (status.viaRelay) return view('relay', 'success', `Ativo pelo relé: ${name}`, 'none');
   if (status.reachable) {
     return view('mismatch', 'danger', `${name} responde em ${url}, mas tem outro pareamento. Pareie de novo e, no telemóvel, use "Esquecer e parear de novo".`, 'pair', 'Parear de novo');
   }

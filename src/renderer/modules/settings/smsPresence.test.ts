@@ -99,3 +99,21 @@ describe('describeSmsPairing', () => {
     expect(describeSmsPairing(offline, null)).toMatchObject({ state: 'unreachable', primary: 'detect' });
   });
 });
+
+describe('relé', () => {
+  test('fora da rede local mas a responder pelo relé conta como ativo, sem pedir ação', () => {
+    const view = describeSmsPairing({ ...base, reachable: false, active: false, viaRelay: true, enabled: true }, null);
+    expect(view).toMatchObject({ state: 'relay', tone: 'success', line: 'Ativo pelo relé: Loja', primary: 'none' });
+  });
+
+  test('o painel do relé diz em que ponto está a configuração', async () => {
+    const { describeSmsRelay } = await import('./SmsRelayPanel');
+    const state = { url: 'https://rele.exemplo.dev', adminKeyConfigured: true, phoneSynced: false, needsPairing: false };
+    expect(describeSmsRelay({ ...state, url: '' }).tone).toBe('muted');
+    expect(describeSmsRelay({ ...state, needsPairing: true }).line).toContain('parear de novo');
+    expect(describeSmsRelay(state).line).toContain('À espera do telemóvel');
+    expect(describeSmsRelay({ ...state, appVersion: '0.11.0' }).line).toBe('O relé exige a app 0.12.0 no telemóvel (tem a 0.11.0)');
+    expect(describeSmsRelay({ ...state, appVersion: '0.12.0' }).line).toContain('À espera do telemóvel');
+    expect(describeSmsRelay({ ...state, phoneSynced: true })).toEqual({ tone: 'success', line: 'Endereço do relé entregue ao telemóvel' });
+  });
+});

@@ -4,7 +4,7 @@ import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { closeDatabaseForTests, getSqliteDatabase } from '../db/database';
-import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs, verifyCompanionPairing } from './sms-outbox';
+import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, pollSmsStatusIfDue, runSmsOutboxIfDue, signedFetch, smsDispatchIntervalMs, verifyCompanionPairing } from './sms-outbox';
 import { writeSecret } from './secrets';
 
 const oneWifiInterface = {
@@ -44,6 +44,13 @@ afterAll(() => {
 });
 
 describe('SMS outbox', () => {
+  test('bounds a LAN request even when the caller does not supply a timeout', async () => {
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
+    const mock = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}'));
+    vi.stubGlobal('fetch', mock);
+    await signedFetch('/requests', 'POST', { requestId: 'test' });
+    expect(mock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
   test('enqueue creates pending_dispatch row', () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('SMS-1', 'Cliente SMS', 'active')`).run().lastInsertRowid as number;
     const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 1000, 10, 'active')`).run(clientId).lastInsertRowid as number;
@@ -78,6 +85,43 @@ describe('SMS outbox', () => {
     });
     const row = db.prepare('SELECT status, android_request_id FROM sms_outbox WHERE id = ?').get(id) as { status: string; android_request_id: string };
     expect(row).toMatchObject({ status: 'pending_approval', android_request_id: 'android-1' });
+  });
+
+  test('keeps the same request ID after a lost response and a retry', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    const seen: string[] = [];
+    const deps = {
+      postRequest: async (entry: { requestId: string }) => {
+        seen.push(entry.requestId);
+        return seen.length === 1 ? { ok: false as const, error: 'resposta perdida', unreachable: true } : { ok: true as const, androidRequestId: entry.requestId };
+      },
+      fetchStatus: async () => ({ status: 'pending_approval' as const })
+    };
+    await runSmsOutboxIfDue(new Date(), deps);
+    const stored = db.prepare('SELECT android_request_id AS id FROM sms_outbox WHERE id=?').get(id) as { id: string | null };
+    expect(stored.id).toBe(seen[0]);
+    db.prepare('UPDATE sms_outbox SET next_attempt_at=NULL WHERE id=?').run(id);
+    await runSmsOutboxIfDue(new Date(), deps);
+    expect(seen).toEqual([stored.id, stored.id]);
+  });
+
+  test('keeps the request ID after the database is closed and reopened', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    let first = '';
+    await runSmsOutboxIfDue(new Date(), {
+      postRequest: async ({ requestId }) => { first = requestId; return { ok: false, error: 'offline', unreachable: true }; },
+      fetchStatus: async () => ({ status: 'pending_approval' })
+    });
+    closeDatabaseForTests();
+    db = getSqliteDatabase();
+    db.prepare('UPDATE sms_outbox SET next_attempt_at=NULL WHERE id=?').run(id);
+    let retried = '';
+    await runSmsOutboxIfDue(new Date(), {
+      postRequest: async ({ requestId }) => { retried = requestId; return { ok: true, androidRequestId: requestId }; },
+      fetchStatus: async () => ({ status: 'pending_approval' })
+    });
+    expect(retried).toBe(first);
+    expect(db.prepare('SELECT status FROM sms_outbox WHERE id=?').get(id)).toEqual({ status: 'pending_approval' });
   });
 
   test('an overlapping drain is skipped: the same SMS never goes to the phone twice', async () => {

@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { readSecret } from './secrets';
 import { createSmsSignature, verifyResponseSignature } from './sms-signing';
+import { relayConfig, relayFetch } from './sms-relay';
 import type { SmsEventType } from '../../shared/sms';
 
 const DEFAULT_COMPANION_PORT = 8765;
@@ -88,7 +89,54 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
+// Depois de uma falha, cada transporte descansa: uma fila de 20 SMS não espera 20 vezes pelo mesmo timeout.
+const BREAKER_MS = 30_000;
+let lanDownUntil = 0;
+let relayDownUntil = 0;
+let transport: 'lan' | 'relay' = 'lan';
+
+/** Por onde saiu o último pedido bem-sucedido ao telemóvel. */
+export function companionTransport(): 'lan' | 'relay' {
+  return transport;
+}
+
+export function resetCompanionTransportForTests(): void {
+  lanDownUntil = 0;
+  relayDownUntil = 0;
+  transport = 'lan';
+}
+
+/**
+ * Pedido assinado ao telemóvel. Rede local primeiro; se falhar e houver relé
+ * configurado (ADR 0024), o mesmo pedido segue cifrado pelo relé. Com um
+ * endereço explícito (procura na rede, pareamento) nunca sai da rede local.
+ */
 export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string, nonceOverride?: string): Promise<Response> {
+  const db = getSqliteDatabase();
+  const relay = baseUrlOverride ? null : relayConfig(db);
+  if (!relay) return lanFetch(path, method, bodyObject, timeoutMs, baseUrlOverride, nonceOverride);
+  const nonce = nonceOverride ?? randomUUID();
+  if (Date.now() >= lanDownUntil && getSetting('smsCompanionBaseUrl')) {
+    try {
+      const response = await lanFetch(path, method, bodyObject, timeoutMs, undefined, nonce);
+      transport = 'lan';
+      return response;
+    } catch {
+      lanDownUntil = Date.now() + BREAKER_MS;
+    }
+  }
+  if (Date.now() < relayDownUntil) throw new Error('Telemóvel inacessível na rede local e pelo relé');
+  try {
+    const response = await relayFetch(relay, readSecret(db, 'smsRelayAdminKey'), method, path, bodyObject ? JSON.stringify(bodyObject) : '', nonce);
+    transport = 'relay';
+    return response;
+  } catch (err) {
+    relayDownUntil = Date.now() + BREAKER_MS;
+    throw err;
+  }
+}
+
+async function lanFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string, nonceOverride?: string): Promise<Response> {
   const baseUrl = baseUrlOverride || getSetting('smsCompanionBaseUrl');
   const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
@@ -105,7 +153,7 @@ export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObje
       'x-ispm-signature': signature
     },
     body: method === 'POST' ? body : undefined,
-    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined
+    signal: AbortSignal.timeout(timeoutMs ?? 5000)
   });
 }
 
@@ -119,7 +167,8 @@ export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObje
 async function pingProvesPairing(timeoutMs: number, baseUrl?: string): Promise<'paired' | 'rejected' | 'unreachable'> {
   const nonce = randomUUID();
   try {
-    const response = await signedFetch('/ping', 'GET', undefined, timeoutMs, baseUrl, nonce);
+    // Só rede local: é esta resposta que diz se o endereço guardado ainda é o do telemóvel.
+    const response = await lanFetch('/ping', 'GET', undefined, timeoutMs, baseUrl, nonce);
     if (response.status === 401) return 'rejected';
     if (getSetting('smsCompanionPairingVersion') !== '2') return 'paired';
     const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
@@ -224,7 +273,10 @@ export async function selfHealCompanionAddress(): Promise<void> {
   const { reachable, paired } = await verifyCompanionPairing(1500);
   if (reachable && paired) return;
   const found = await findPairedCompanion();
-  if (found && found !== current) setSetting('smsCompanionBaseUrl', found);
+  if (found && found !== current) {
+    setSetting('smsCompanionBaseUrl', found);
+    lanDownUntil = 0;
+  }
 }
 
 async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice'; clientName: string | null }): Promise<SmsDispatchResult> {
@@ -282,7 +334,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
-    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts,
+    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts, s.android_request_id AS androidRequestId,
            s.created_at AS createdAt, c.full_name AS clientName
     FROM sms_outbox s
     LEFT JOIN clients c ON c.id = s.client_id
@@ -290,6 +342,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     ORDER BY s.id ASC LIMIT 20
   `).all(nowIso) as Array<{
     id: number;
+    androidRequestId: string | null;
     eventType: SmsEventType | 'test' | 'fup_notice';
     toPhone: string;
     body: string;
@@ -309,7 +362,10 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
   let retried = 0;
 
   for (const row of rows) {
-    const requestId = randomUUID();
+    // Persist before the network call: the phone may accept it even when the
+    // response is lost. Reusing the ID lets its request store deduplicate retries.
+    const requestId = row.androidRequestId ?? randomUUID();
+    if (!row.androidRequestId) db.prepare('UPDATE sms_outbox SET android_request_id=? WHERE id=? AND android_request_id IS NULL').run(requestId, row.id);
     const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType, clientName: row.clientName });
     if (result.ok) {
       db.prepare(`
