@@ -34,6 +34,7 @@ import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from '
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
 import { AdminPasswordDialog } from './settings/AdminPasswordDialog';
 import { ErrorReportsPanel } from './ErrorReportsPanel';
+import { BackgroundPanel } from './BackgroundPanel';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
@@ -1012,6 +1013,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
       {activeTab === 'jobs' && (
         <>
+          {(auth.isAuthBypassed || auth.hasRole('admin')) && <BackgroundPanel />}
           <JobHealthPanel />
           {/* Consentimento de envio para fora: decisão de administrador, como o Cofre. */}
           {(auth.isAuthBypassed || auth.hasRole('admin')) && <ErrorReportsPanel />}

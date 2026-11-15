@@ -1,9 +1,12 @@
 import type { UpdateStatus } from '../shared/update-status';
+import type { BackgroundSettings, BackgroundSettingsChange } from '../shared/background-settings';
 
 declare global {
   interface Window {
     ispm?: {
       platform: string;
+      getBackgroundSettings?: () => Promise<BackgroundSettings>;
+      setBackgroundSettings?: (change: BackgroundSettingsChange) => Promise<BackgroundSettings>;
       errorReportsActive?: boolean;
       getErrorReports?: () => Promise<{ available: boolean; enabled: boolean; active: boolean }>;
       setErrorReports?: (enabled: boolean) => Promise<boolean>;
