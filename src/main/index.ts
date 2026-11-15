@@ -7,10 +7,12 @@ import { createLocalProtection } from '../backend/lib/local-protection';
 import { ERROR_REPORTS_ARG } from '../shared/error-reports';
 import type { UpdateStatus } from '../shared/update-status';
 import { errorReportsActive, initErrorReports, registerErrorReportsIpc } from './error-reports';
+import { createBackgroundController } from './background';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
+let background: ReturnType<typeof createBackgroundController> | undefined;
 
 /**
  * Uma instância só. Sem isto, abrir o atalho duas vezes deixa um processo
@@ -21,8 +23,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
+    if (background) { background.show(); return; }
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
     mainWindow.focus();
   });
 }
@@ -269,6 +273,7 @@ function registerUpdateStatus() {
   ipcMain.handle('update:get-status', () => updateStatus);
   ipcMain.handle('update:install', () => {
     if (updateStatus.state !== 'downloaded') return false;
+    background?.beginQuit();
     autoUpdater.quitAndInstall();
     return true;
   });
@@ -296,7 +301,7 @@ function initAutoUpdater() {
     setUpdateStatus({ state: 'downloaded', version: info.version });
     const options = {
       type: 'info' as const,
-      buttons: ['Reiniciar e instalar agora', 'Instalar ao fechar a aplicação'],
+      buttons: ['Reiniciar e instalar agora', 'Instalar ao sair do ISPM'],
       defaultId: 0,
       cancelId: 1,
       noLink: true,
@@ -307,13 +312,16 @@ function initAutoUpdater() {
         `Versão instalada: ${appVersion()}\n` +
         `Nova versão: ${info.version}\n\n` +
         'Deseja reiniciar e instalar a atualização agora? Se preferir continuar a trabalhar, ' +
-        'a atualização é instalada automaticamente quando fechar a aplicação.'
+        'a atualização é instalada automaticamente quando escolher Sair no menu do ISPM.'
     };
     // Modal sobre a janela principal quando existe — não fica perdido atrás.
     const { response } = mainWindow && !mainWindow.isDestroyed()
       ? await dialog.showMessageBox(mainWindow, options)
       : await dialog.showMessageBox(options);
-    if (response === 0) autoUpdater.quitAndInstall();
+    if (response === 0) {
+      background?.beginQuit();
+      autoUpdater.quitAndInstall();
+    }
   });
   autoUpdater.on('error', (err) => {
     progress(-1);
@@ -331,6 +339,7 @@ async function createWindow() {
   const iconPath = appIconPath();
 
   mainWindow = new BrowserWindow({
+    show: !background?.startHidden(),
     width: 1280,
     height: 820,
     minWidth: 1080,
@@ -361,6 +370,8 @@ async function createWindow() {
   });
 
   registerContextMenu(mainWindow.webContents);
+  background?.attach(mainWindow);
+  mainWindow.on('closed', () => { mainWindow = null; });
 
   mainWindow.webContents.on('preload-error', (_e, preloadPath, error) => {
     console.error('[preload-error]', preloadPath, error);
@@ -377,6 +388,7 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   buildAppMenu();
+  background = createBackgroundController(appIconPath(), () => mainWindow);
 
   if (!isDevelopment) {
     await startBackend({ localProtection: createLocalProtection(safeStorage) });
@@ -450,6 +462,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('activate', () => {
+  if (mainWindow) { background?.show(); return; }
   if (BrowserWindow.getAllWindows().length === 0) {
     void createWindow();
   }

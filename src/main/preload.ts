@@ -5,6 +5,9 @@ type UpdateStatus = { state: 'idle' | 'downloading' | 'downloaded' | 'error' } &
 
 contextBridge.exposeInMainWorld('ispm', {
   platform: process.platform,
+  getBackgroundSettings: () => ipcRenderer.invoke('background:get'),
+  setBackgroundSettings: (change: { keepRunning: boolean } | { openAtLogin: boolean }) =>
+    ipcRenderer.invoke('background:set', change),
   // ERROR_REPORTS_ARG de src/shared/error-reports.ts; o preload em sandbox não importa módulos locais.
   errorReportsActive: process.argv.includes('--ispm-error-reports'),
   getErrorReports: (): Promise<{ available: boolean; enabled: boolean; active: boolean }> =>
