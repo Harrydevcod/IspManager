@@ -1,6 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
-import { selfHealCompanionAddress, signedFetch } from './sms-outbox';
+import { companionTransport, selfHealCompanionAddress, signedFetch } from './sms-outbox';
 import { buildCompanionSnapshot, type CompanionSnapshot } from './companion-snapshot';
 import { appSupportsSealed, payloadForApp } from './companion-crypto';
 
@@ -51,7 +51,14 @@ export type CompanionSyncDeps = {
   pushSnapshot: (snapshot: CompanionSnapshot, sealed: boolean) => Promise<PushOutcome>;
   buildSnapshot: () => Promise<CompanionSnapshot>;
   selfHeal: () => Promise<void>;
+  /** O último pedido saiu pelo relé: a rede local não respondeu. */
+  viaRelay?: () => boolean;
+  /** Diz ao telemóvel onde fica o relé (vazio = deixar de o usar); false se ele não o aceitou. */
+  pushRelay?: (url: string) => Promise<boolean>;
 };
+
+/** O endereço do relé que o telemóvel já confirmou ter guardado. */
+export const RELAY_PHONE_KEY = 'smsRelayPhoneUrl';
 
 const LAST_SEEN_KEY = 'smsCompanionLastSeen';
 const STATUS_KEY = 'smsCompanionDeviceStatus';
@@ -145,11 +152,21 @@ async function defaultPushSnapshot(snapshot: CompanionSnapshot, sealed: boolean)
   }
 }
 
+async function defaultPushRelay(url: string): Promise<boolean> {
+  try {
+    return (await signedFetch('/relay', 'POST', { url }, 5000)).ok;
+  } catch {
+    return false;
+  }
+}
+
 const defaultDeps: CompanionSyncDeps = {
   fetchStatus: defaultFetchStatus,
   pushSnapshot: defaultPushSnapshot,
   buildSnapshot: () => buildCompanionSnapshot(),
-  selfHeal: selfHealCompanionAddress
+  selfHeal: selfHealCompanionAddress,
+  viaRelay: () => companionTransport() === 'relay',
+  pushRelay: defaultPushRelay
 };
 
 export type CompanionSyncResult =
@@ -180,6 +197,14 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
 
   setSetting(LAST_SEEN_KEY, now.toISOString());
   if (status) setSetting(STATUS_KEY, JSON.stringify(status));
+
+  // Respondeu pelo relé: procura-o na rede local, o IP pode ter mudado.
+  if (deps.viaRelay?.()) await deps.selfHeal();
+  // O telemóvel só usa o relé depois de receber o endereço por este canal autenticado.
+  const relayUrl = getSetting('smsRelayUrl');
+  if (deps.pushRelay && getSetting('smsCompanionPairingVersion') === '2' && relayUrl !== getSetting(RELAY_PHONE_KEY) && (await deps.pushRelay(relayUrl))) {
+    setSetting(RELAY_PHONE_KEY, relayUrl);
+  }
 
   // Volta a estar online, ou o telemóvel pediu → envia já, para o Painel não ficar com o resumo velho.
   const due = syncRequested || !wasOnline || now.getTime() - lastPushAt >= snapshotIntervalMs();

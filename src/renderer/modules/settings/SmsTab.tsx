@@ -1,5 +1,6 @@
 import { Check, QrCode, RefreshCw, RotateCcw, Unlink, Wifi } from 'lucide-react';
 import { SmsInbox } from './SmsInbox';
+import { SmsRelayPanel } from './SmsRelayPanel';
 import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
 import { TemplateField } from './TemplateField';
@@ -159,6 +160,7 @@ export function SmsTab({
           </div>
         )}
       </div>
+      <SmsRelayPanel />
       <SmsInbox />
       <section className="sms-delivery-report" aria-labelledby="sms-delivery-report-title">
         <div className="sms-delivery-report-head">

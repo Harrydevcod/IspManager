@@ -202,3 +202,32 @@ describe('buildCompanionSnapshot', () => {
     expect(s.network.wanReason).toBe('timeout');
   });
 });
+
+describe('relé: o telemóvel recebe o endereço pelo canal do pareamento', () => {
+  test('envia o endereço uma vez, e de novo só quando muda ou o telemóvel o recusa', async () => {
+    pair();
+    setSetting('smsCompanionPairingVersion', '2');
+    setSetting('smsRelayUrl', 'https://rele.exemplo.dev');
+    const pushRelay = vi.fn(async (_url: string) => false);
+    await sync.runCompanionSyncIfDue(new Date(), deps({ pushRelay }));
+    expect(pushRelay).toHaveBeenCalledWith('https://rele.exemplo.dev');
+    // Recusou (app antiga): fica por confirmar e repete no tick seguinte.
+    pushRelay.mockResolvedValue(true);
+    await sync.runCompanionSyncIfDue(new Date(), deps({ pushRelay }));
+    await sync.runCompanionSyncIfDue(new Date(), deps({ pushRelay }));
+    expect(pushRelay).toHaveBeenCalledTimes(2);
+    // Relé removido nas Definições: o telemóvel deixa de o consultar.
+    setSetting('smsRelayUrl', '');
+    await sync.runCompanionSyncIfDue(new Date(), deps({ pushRelay }));
+    expect(pushRelay).toHaveBeenLastCalledWith('');
+  });
+
+  test('pareamento v1 não recebe relé; pelo relé, procura-se o telemóvel na rede local', async () => {
+    pair();
+    setSetting('smsRelayUrl', 'https://rele.exemplo.dev');
+    const d = deps({ pushRelay: vi.fn(async () => true), viaRelay: () => true });
+    await sync.runCompanionSyncIfDue(new Date(), d);
+    expect(d.pushRelay).not.toHaveBeenCalled();
+    expect(d.selfHeal).toHaveBeenCalledTimes(1);
+  });
+});

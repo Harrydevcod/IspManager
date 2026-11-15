@@ -79,6 +79,7 @@ describe('SMS routes', () => {
       paired: false,
       reachable: false,
       active: false,
+      viaRelay: false,
       baseUrl: '',
       deviceName: '',
       lastSeen: null,
@@ -307,5 +308,49 @@ describe('SMS routes', () => {
     const { paymentId } = seedPaidPayment();
     const response = await app.inject({ method: 'POST', url: `/api/payments/${paymentId}/sms`, payload: { eventType: 'nonsense' } });
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('relé do telemóvel SMS', () => {
+  const secret = 'ab'.repeat(32);
+  const put = (payload: Record<string, string>) => app.inject({ method: 'PUT', url: '/api/sms/relay', payload });
+  function pairV2() {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingVersion','2')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', secret);
+  }
+
+  test('recusa endereços sem HTTPS e a falta da chave de administração', async () => {
+    expect((await put({ url: 'http://rele.exemplo.dev', adminKey: 'k'.repeat(40) })).statusCode).toBe(400);
+    expect((await put({ url: 'https://rele.exemplo.dev' })).json().error).toContain('chave de administração');
+  });
+
+  test('guarda o relé depois de criar a caixa, sem devolver a chave', async () => {
+    pairV2();
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, auth: new Headers(init.headers).get('authorization') });
+      return new Response('{}', { status: 201 });
+    }));
+    const response = await put({ url: 'https://rele.exemplo.dev/', adminKey: 'k'.repeat(40) });
+    expect(response.json()).toEqual({ url: 'https://rele.exemplo.dev', adminKeyConfigured: true, phoneSynced: false, needsPairing: false });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/^https:\/\/rele\.exemplo\.dev\/m\/[0-9a-f]{64}\/register$/);
+    expect(calls[0].auth).toBe(`Bearer ${'k'.repeat(40)}`);
+    expect((await app.inject({ method: 'GET', url: '/api/sms/relay' })).body).not.toContain('kkkk');
+  });
+
+  test('chave recusada pelo relé: nada fica guardado', async () => {
+    pairV2();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })));
+    const response = await put({ url: 'https://rele.exemplo.dev', adminKey: 'k'.repeat(40) });
+    expect(response.statusCode).toBe(502);
+    expect(response.json().error).toBe('O relé recusou a chave de administração.');
+    expect((await app.inject({ method: 'GET', url: '/api/sms/relay' })).json()).toMatchObject({ url: '', adminKeyConfigured: false });
+  });
+
+  test('remover o endereço apaga também a chave', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 201 })));
+    await put({ url: 'https://rele.exemplo.dev', adminKey: 'k'.repeat(40) });
+    expect((await put({ url: '' })).json()).toEqual({ url: '', adminKeyConfigured: false, phoneSynced: false, needsPairing: true });
   });
 });

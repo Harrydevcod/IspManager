@@ -314,6 +314,8 @@ export type SmsStatus = {
   paired: boolean;
   reachable: boolean;
   active: boolean;
+  /** Fora da rede local, mas a responder pelo relé (ADR 0024). */
+  viaRelay?: boolean;
   baseUrl: string;
   deviceName: string;
   /** ISO da última resposta do telemóvel ao desktop; null se nunca respondeu. */
