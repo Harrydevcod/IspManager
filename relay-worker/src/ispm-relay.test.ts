@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import worker from '../../../relay-worker/src/index';
-import { Mailbox, type MailboxStorage } from '../../../relay-worker/src/mailbox';
-import { closeDatabaseForTests, getSqliteDatabase } from '../db/database';
-import { writeSecret } from './secrets';
-import { companionTransport, enqueueSmsNotification, resetCompanionTransportForTests, runSmsOutboxIfDue, signedFetch, verifyCompanionPairing } from './sms-outbox';
-import { normalizeRelayUrl, relayConfig, relayTiming } from './sms-relay';
-import { deriveRelayKeys, openRelayEnvelope, sealRelayEnvelope, type RelayEnvelope } from './sms-relay-crypto';
-import { createResponseSignature, verifyResponseSignature } from './sms-signing';
+import worker from './index';
+import { Mailbox, type MailboxStorage } from './mailbox';
+import { closeDatabaseForTests, getSqliteDatabase } from '../../src/backend/db/database';
+import { writeSecret } from '../../src/backend/lib/secrets';
+import { companionTransport, enqueueSmsNotification, resetCompanionTransportForTests, runSmsOutboxIfDue, signedFetch, verifyCompanionPairing } from '../../src/backend/lib/sms-outbox';
+import { normalizeRelayUrl, relayConfig, relayTiming } from '../../src/backend/lib/sms-relay';
+import { deriveRelayKeys, openRelayEnvelope, sealRelayEnvelope, type RelayEnvelope } from '../../src/backend/lib/sms-relay-crypto';
+import { createResponseSignature, verifyResponseSignature } from '../../src/backend/lib/sms-signing';
 
 /**
  * PC ↔ Worker ↔ telemóvel, tudo em processo: o código real do ISPM e do Worker,

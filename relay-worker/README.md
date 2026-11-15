@@ -40,4 +40,4 @@ Todas em `/m/<caixa>/`, com `Authorization: Bearer <credencial>`. A caixa e as c
 
 ## Testes
 
-Correm com os do ISPM: `npx vitest run relay-worker src/backend/lib/sms-relay.test.ts`.
+Correm com os do ISPM: `npx vitest run relay-worker`.
