@@ -15,7 +15,7 @@ const RELAY_APP_VERSION = '0.12.0';
 export function describeSmsRelay(state: SmsRelayState): { tone: 'success' | 'warn' | 'muted'; line: string } {
   if (!state.url) return { tone: 'muted', line: 'Sem relé: o telemóvel só responde na rede local' };
   if (state.needsPairing) return { tone: 'warn', line: 'O relé exige parear de novo o telemóvel' };
-  if (state.phoneSynced) return { tone: 'success', line: 'Relé ativo fora da rede local' };
+  if (state.phoneSynced) return { tone: 'success', line: 'Endereço do relé entregue ao telemóvel' };
   if (state.appVersion && olderVersion(state.appVersion, RELAY_APP_VERSION)) {
     return { tone: 'warn', line: `O relé exige a app ${RELAY_APP_VERSION} no telemóvel (tem a ${state.appVersion})` };
   }
@@ -42,6 +42,18 @@ export function SmsRelayPanel() {
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  // À espera do telemóvel: o estado muda sozinho quando ele recebe o endereço.
+  const waiting = Boolean(state?.url) && !state?.phoneSynced;
+  useEffect(() => {
+    if (!waiting) return;
+    const id = window.setInterval(() => {
+      void authFetch(RELAY_API)
+        .then(async (response) => { if (response.ok) setState((await response.json()) as SmsRelayState); })
+        .catch(() => undefined);
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [waiting]);
 
   async function save(nextUrl: string) {
     setSaving(true);
