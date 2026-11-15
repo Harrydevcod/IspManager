@@ -59,6 +59,9 @@ import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
 import { collectWanUsage, loadWanUsage, saveStarlinkCycleDay } from '../lib/wan-usage';
+import { bytesPerGb, readFupSettings } from '../lib/fup-settings';
+import { loadOperatorPool } from '../lib/fup';
+
 import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
@@ -71,6 +74,12 @@ import { requestNetworkSync, runExclusive } from '../lib/network-sync';
 import { buildReconciliation, resolveReconciliation } from '../lib/reconciliation';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
+
+/** O consumo das WAN com o pacote da operadora (uso justo global), para a previsão do ciclo. */
+function loadWanUsageWithPackage(db: ReturnType<typeof getSqliteDatabase>) {
+  const settings = readFupSettings(db);
+  return loadWanUsage(db, undefined, loadOperatorPool(db, new Date(), settings).packageGb * bytesPerGb(settings));
+}
 
 const serviceParamsSchema = z.object({
   id: z.coerce.number().int().positive()
@@ -642,7 +651,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     return result;
   });
 
-  app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
+  app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsageWithPackage(getSqliteDatabase()));
   app.get('/api/network/router/clients/usage', adminOnly, async () => loadClientUsage(getSqliteDatabase()));
 
   // O dia em que começa o ciclo da conta Starlink: é o período do total no cartão do consumo.
@@ -651,7 +660,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: 'Indique um dia entre 1 e 28' });
     saveStarlinkCycleDay(getSqliteDatabase(), parsed.data.day);
     recordAudit(request, { action: 'update', entityType: 'settings', summary: 'Mudou o início do ciclo Starlink', metadata: { day: parsed.data.day } });
-    return loadWanUsage(getSqliteDatabase());
+    return loadWanUsageWithPackage(getSqliteDatabase());
   });
 
   app.post('/api/network/router/wan/usage/counter', adminOnly, async (request, reply) => {

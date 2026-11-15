@@ -222,7 +222,11 @@ export type RouterWanUsage = {
   month: WanUsageRow[];
   /** Totais por WAN do ciclo da conta Starlink e do mês civil que contêm hoje (até hoje). */
   periods?: {
-    cycle: { start: string; end: string; anchor: number; total: WanUsageRow[] };
+    cycle: {
+      start: string; end: string; anchor: number; total: WanUsageRow[];
+      /** Ao ritmo dos últimos 7 dias: o total do ciclo e, com pacote da operadora, o dia em que se esgota. */
+      forecast?: { paceBytesPerDay: number; projectedBytes: number; exhaustsOn: string | null } | null;
+    };
     month: { start: string; end: string; total: WanUsageRow[] };
   };
   /** Cobre o ciclo e o mês, com os dias por vir a zero. */

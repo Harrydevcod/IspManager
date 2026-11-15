@@ -8,7 +8,7 @@ import '../fup/fup.css';
 
 type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
-type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; baseGb: number; extraGb: number; percent: number; activeClients: number; extraConnections: number; shareGb: number; exhausted: boolean };
+type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; baseGb: number; extraGb: number; percent: number; activeClients: number; extraConnections: number; shareGb: number; exhausted: boolean; exhaustsOn?: string | null };
 
 // O pt-PT não agrupa 4 algarismos (7432); aqui agrupa sempre, como "9 000 GB".
 const gbText = (value: number) => (value < 10 ? value.toFixed(1).replace('.', ',') : String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
@@ -206,7 +206,7 @@ export function FupSettingsPanel() {
             {title === 'FUP por plano' && <p className="fup-lede">Os valores do serviço e do plano mandam sobre estes.</p>}
             {global && pool?.enabled && (
               <Message tone={pool.exhausted ? 'warn' : 'neutral'}>
-                {gbText(pool.usedBytes / perGb)} de {gbText(pool.baseGb)}{pool.extraGb > 0 ? ` + ${gbText(pool.extraGb)}` : ''} GB gastos ({Math.round(pool.percent)} %) · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}
+                {gbText(pool.usedBytes / perGb)} de {gbText(pool.baseGb)}{pool.extraGb > 0 ? ` + ${gbText(pool.extraGb)}` : ''} GB gastos ({Math.round(pool.percent)} %) · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}{!pool.exhausted && pool.exhaustsOn ? ` · a este ritmo acaba a ${formatPtDate(pool.exhaustsOn)}` : ''}
               </Message>
             )}
             <div className="fup-settings-grid">
