@@ -4,6 +4,24 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.71](https://github.com/Harrydevcod/IspManager/releases/tag/v2.71.0) — 2026-11-15
+
+**Antes de atualizar:** para usar o relé, instale também a app ISPM SMS 0.12 no telemóvel. Sem relé configurado, tudo funciona como até aqui.
+
+### Adicionado
+- **O ISPM continua a trabalhar com a janela fechada.** Fechar a janela deixa-o no ícone junto ao relógio; os avisos, a faturação e as cópias continuam. "Sair", no ícone, termina-o. Em Definições › Automatismos: "Manter a correr com a janela fechada" (ligado) e "Arrancar com o Windows" (desligado).
+- **Relé para o telemóvel fora da rede local.** Quando o PC não chega ao telemóvel pela rede local, os pedidos seguem cifrados por um relé na Cloudflare e o telemóvel recolhe-os onde tiver Internet. O relé não consegue ler nem alterar o que passa. Configura-se em Definições › SMS com o endereço e a chave de administração; o telemóvel recebe o endereço da próxima vez que estiver na rede local.
+- **Previsão do ciclo da operadora.** Router de gestão › Visão geral mostra quanto se gasta no ciclo ao ritmo dos últimos 7 dias e, com o pacote da operadora definido, o dia em que acaba. A previsão também aparece em Definições › Uso justo.
+- **WhatsApp oficial da Meta com modelos aprovados.** Em Definições › WhatsApp, com a Meta escolhida, cada aviso pode sair por um modelo aprovado na conta. "Copiar texto para a Meta" dá o texto já numerado para criar o modelo. Se os campos não baterem com o modelo, o aviso não sai.
+
+### Alterado
+- **O corte automático só acontece depois de um aviso entregue.** Um serviço em condição de corte sem SMS enviado nem WhatsApp entregue fica retido, com "Retido" em Suspensões a chegar. A suspensão manual continua disponível.
+- **O Painel avisa quando nenhum aviso chega.** Se nas últimas 24 horas houve avisos falhados e nenhum entregue, aparece "Avisos por entregar" e o Estado da operação diz a causa.
+- Um SMS repetido depois de uma resposta perdida leva o mesmo identificador e o telemóvel não o envia duas vezes.
+
+### Na app ISPM SMS 0.12
+- Recolhe os pedidos pelo relé quando o PC não a contacta há minuto e meio. Os ecrãs não mudam.
+
 ## [2.70](https://github.com/Harrydevcod/IspManager/releases/tag/v2.70.0) — 2026-11-14
 
 ### Corrigido
