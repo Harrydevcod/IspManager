@@ -332,7 +332,7 @@ describe('relé do telemóvel SMS', () => {
       return new Response('{}', { status: 201 });
     }));
     const response = await put({ url: 'https://rele.exemplo.dev/', adminKey: 'k'.repeat(40) });
-    expect(response.json()).toEqual({ url: 'https://rele.exemplo.dev', adminKeyConfigured: true, phoneSynced: false, needsPairing: false });
+    expect(response.json()).toEqual({ url: 'https://rele.exemplo.dev', adminKeyConfigured: true, phoneSynced: false, needsPairing: false, appVersion: null });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toMatch(/^https:\/\/rele\.exemplo\.dev\/m\/[0-9a-f]{64}\/register$/);
     expect(calls[0].auth).toBe(`Bearer ${'k'.repeat(40)}`);
@@ -351,6 +351,6 @@ describe('relé do telemóvel SMS', () => {
   test('remover o endereço apaga também a chave', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 201 })));
     await put({ url: 'https://rele.exemplo.dev', adminKey: 'k'.repeat(40) });
-    expect((await put({ url: '' })).json()).toEqual({ url: '', adminKeyConfigured: false, phoneSynced: false, needsPairing: true });
+    expect((await put({ url: '' })).json()).toEqual({ url: '', adminKeyConfigured: false, phoneSynced: false, needsPairing: true, appVersion: null });
   });
 });

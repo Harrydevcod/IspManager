@@ -2,16 +2,23 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Unlink } from 'lucide-react';
 import { Button, Field, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
+import { olderVersion } from './smsPresence';
 
 const RELAY_API = 'http://127.0.0.1:3001/api/sms/relay';
 
-export type SmsRelayState = { url: string; adminKeyConfigured: boolean; phoneSynced: boolean; needsPairing: boolean };
+export type SmsRelayState = { url: string; adminKeyConfigured: boolean; phoneSynced: boolean; needsPairing: boolean; appVersion?: string | null };
+
+/** A primeira versão da app que consulta o relé. */
+const RELAY_APP_VERSION = '0.12.0';
 
 /** Uma linha de estado; a cor reforça, o texto já diz tudo. */
 export function describeSmsRelay(state: SmsRelayState): { tone: 'success' | 'warn' | 'muted'; line: string } {
   if (!state.url) return { tone: 'muted', line: 'Sem relé: o telemóvel só responde na rede local' };
   if (state.needsPairing) return { tone: 'warn', line: 'O relé exige parear de novo o telemóvel' };
   if (state.phoneSynced) return { tone: 'success', line: 'Relé ativo fora da rede local' };
+  if (state.appVersion && olderVersion(state.appVersion, RELAY_APP_VERSION)) {
+    return { tone: 'warn', line: `O relé exige a app ${RELAY_APP_VERSION} no telemóvel (tem a ${state.appVersion})` };
+  }
   return { tone: 'warn', line: 'À espera do telemóvel na rede local para lhe entregar o endereço' };
 }
 

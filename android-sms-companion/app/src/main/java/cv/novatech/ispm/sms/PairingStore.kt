@@ -24,6 +24,8 @@ class PairingStore(context: Context) {
   fun save(secret: String, deviceName: String, version: Int = 1) {
     prefs.edit()
       .remove("secret")
+      // Outro pareamento, outra caixa no relé: o PC volta a dizer onde fica.
+      .remove("relayUrl")
       .putString("sealed", seal(secret))
       .putString("deviceName", deviceName)
       .putInt("version", version)
@@ -47,6 +49,10 @@ class PairingStore(context: Context) {
   fun deviceName(): String = prefs.getString("deviceName", "") ?: ""
   fun version(): Int = prefs.getInt("version", 1)
   fun isPaired(): Boolean = secret().isNotBlank()
+
+  /** Where the relay lives (ADR 0024); blank until the paired PC says so. */
+  fun relayUrl(): String = prefs.getString("relayUrl", "") ?: ""
+  fun saveRelayUrl(url: String) = prefs.edit().putString("relayUrl", url).apply()
 
   fun clear() {
     prefs.edit().clear().apply()

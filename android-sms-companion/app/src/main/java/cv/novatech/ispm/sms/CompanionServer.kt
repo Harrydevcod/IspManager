@@ -57,10 +57,22 @@ class CompanionServer(
       if (session.headers.containsKey("x-ispm-signature")) onRejected()
       return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
     }
-    onAuthenticated()
+    lastLanAt = System.currentTimeMillis()
+    return authenticated(session.method.name, session.uri, session.headers["x-ispm-nonce"].orEmpty(), body)
+  }
 
+  /** When the PC last reached this phone over the LAN; the relay only runs while that is stale. */
+  @Volatile var lastLanAt: Long = 0L
+    private set
+
+  /**
+   * A request whose sender already proved the pairing secret: by HMAC over the
+   * LAN, or by opening as an AES-GCM envelope from the relay (ADR 0024).
+   */
+  fun authenticated(method: String, uri: String, nonce: String, body: String): Response {
+    onAuthenticated()
     return try {
-      route(session, body)
+      route(method, uri, nonce, body)
     } catch (e: Exception) {
       json(Response.Status.BAD_REQUEST, JSONObject().put("error", e.message ?: "pedido invalido"))
     }
@@ -93,22 +105,43 @@ class CompanionServer(
     return notFound
   }
 
-  private fun route(session: IHTTPSession, body: String): Response {
+  /** The same routes, for a request that came sealed through the relay. */
+  fun relayReply(method: String, uri: String, nonce: String, body: String): RelayReply {
+    val response = authenticated(method, uri, nonce, body)
+    val headers = HashMap<String, String>()
+    response.mimeType?.let { headers["content-type"] = it }
+    response.getHeader("x-ispm-response-signature")?.let { headers["x-ispm-response-signature"] = it }
+    return RelayReply(response.status.requestStatus, headers, response.data?.use { it.readBytes() } ?: ByteArray(0))
+  }
+
+  private fun route(method: String, uri: String, nonce: String, body: String): Response {
+    val get = method == "GET"
+    val post = method == "POST"
     // v2 pairings prove themselves here: the answer is signed with the secret.
-    if (session.method == Method.GET && session.uri == "/ping") {
-      return signed(session, "application/json", JSONObject().put("ok", true).toString().toByteArray(Charsets.UTF_8))
+    if (get && uri == "/ping") {
+      return signed(nonce, "application/json", JSONObject().put("ok", true).toString().toByteArray(Charsets.UTF_8))
     }
 
-    if (session.method == Method.GET && session.uri == "/status") {
+    // The relay address only ever arrives through the paired channel. Blank = stop using it.
+    if (post && uri == "/relay") {
+      val url = JSONObject(body).optString("url")
+      if (pairingStore.version() != 2 || !RelayClient.acceptableUrl(url)) {
+        return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "rele invalido"))
+      }
+      pairingStore.saveRelayUrl(url)
+      return json(Response.Status.OK, JSONObject().put("ok", true))
+    }
+
+    if (get && uri == "/status") {
       return json(Response.Status.OK, statusProvider())
     }
 
-    if (session.method == Method.POST && session.uri == "/dashboard") {
+    if (post && uri == "/dashboard") {
       return if (onDashboard(body)) json(Response.Status.OK, JSONObject().put("ok", true))
       else json(Response.Status.BAD_REQUEST, JSONObject().put("error", "resumo invalido"))
     }
 
-    if (session.method == Method.POST && session.uri == "/requests") {
+    if (post && uri == "/requests") {
       val json = JSONObject(body)
       val id = json.getString("requestId")
       // A retried POST must not reset a request the operator already acted on.
@@ -133,23 +166,23 @@ class CompanionServer(
       return json(Response.Status.OK, JSONObject().put("id", id).put("status", "pending_approval"))
     }
 
-    if (eventStore != null && session.method == Method.GET && session.uri == "/events") {
-      return signed(session, "application/json", FieldEventCodec.forDesktop(eventStore.pending()).toString().toByteArray(Charsets.UTF_8))
+    if (eventStore != null && get && uri == "/events") {
+      return signed(nonce, "application/json", FieldEventCodec.forDesktop(eventStore.pending()).toString().toByteArray(Charsets.UTF_8))
     }
 
-    if (eventStore != null && session.method == Method.POST && session.uri == "/events/ack") {
+    if (eventStore != null && post && uri == "/events/ack") {
       eventStore.ack(FieldEventCodec.ackIds(body))
       return json(Response.Status.OK, JSONObject().put("ok", true))
     }
 
-    if (eventStore != null && session.method == Method.GET && session.uri.startsWith("/media/")) {
-      val file = eventStore.media(session.uri.removePrefix("/media/"))
+    if (eventStore != null && get && uri.startsWith("/media/")) {
+      val file = eventStore.media(uri.removePrefix("/media/"))
         ?: return json(Response.Status.NOT_FOUND, JSONObject().put("error", "foto inexistente"))
-      return signed(session, "image/jpeg", file.readBytes())
+      return signed(nonce, "image/jpeg", file.readBytes())
     }
 
-    if (session.method == Method.GET && session.uri.startsWith("/requests/")) {
-      val id = session.uri.removePrefix("/requests/")
+    if (get && uri.startsWith("/requests/")) {
+      val id = uri.removePrefix("/requests/")
       val row = requestStore.find(id)
         ?: return json(Response.Status.NOT_FOUND, JSONObject().put("error", "pedido nao encontrado"))
       return json(Response.Status.OK, statusJson(row))
@@ -169,8 +202,7 @@ class CompanionServer(
    * A response the desktop writes to its database from: signed over the request's
    * nonce and the body, so nothing else on the LAN can answer in the phone's place.
    */
-  private fun signed(session: IHTTPSession, mime: String, bytes: ByteArray): Response {
-    val nonce = session.headers["x-ispm-nonce"].orEmpty()
+  private fun signed(nonce: String, mime: String, bytes: ByteArray): Response {
     return newFixedLengthResponse(Response.Status.OK, mime, bytes.inputStream(), bytes.size.toLong()).apply {
       addHeader("x-ispm-response-signature", ResponseSignature.sign(pairingStore.secret(), nonce, bytes))
     }

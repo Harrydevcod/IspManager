@@ -2,7 +2,7 @@
 
 ## Estado
 
-Proposto. A implementação e o ensaio ponta a ponta ainda estão por concluir.
+Aceite. Implementado no ISPM, na app 0.12.0 e em `relay-worker/`; falta o ensaio com um telemóvel real e uma conta Cloudflare.
 
 ## Contexto
 
@@ -44,6 +44,16 @@ O Worker não pode garantir disponibilidade nem impedir que o operador do relé
 apague ou atrase tráfego. A app deve mostrar falha ou indisponibilidade sem
 afirmar que o pedido foi entregue. O protocolo deve rejeitar replay, envelopes
 alterados, mensagens fora do prazo e respostas de outra troca.
+
+## Como ficou
+
+- **Chaves.** HKDF-SHA-256 sobre o segredo do pareamento v2, com cinco fins: caixa, credencial do ISPM, credencial do telemóvel, chave dos pedidos e chave das respostas (`sms-relay-crypto.ts`, `RelayCrypto.kt`).
+- **Troca.** O ISPM deixa `{method, path, nonce}` numa linha e o corpo a seguir, tudo cifrado, sob um identificador novo. O telemóvel executa o pedido nas mesmas rotas do servidor local e devolve `{status, headers}` e o corpo, cifrados com a outra chave. A assinatura da resposta que `/events` e `/media` exigem continua a ser verificada.
+- **Rede local primeiro.** `signedFetch` só usa o relé quando a rede local falha. Depois de uma falha, cada transporte descansa 30 s, para uma fila de SMS não esperar várias vezes pelo mesmo timeout. A verificação do pareamento e a procura do telemóvel nunca saem da rede local.
+- **Telemóvel.** Consulta o relé de 15 em 15 s quando o computador não o contacta há 90 s (de 2 em 2 s enquanto há pedidos). Regista em disco cada troca antes de a executar; uma resposta que o relé não aceitou é reenviada, não recalculada.
+- **Endereço.** O computador entrega-o ao telemóvel em `POST /relay`, pelo canal do pareamento. O telemóvel só aceita HTTPS e só com pareamento v2. Parear de novo ou esquecer o pareamento apaga-o.
+- **Espera.** O ISPM espera 25 s pela resposta e retira o pedido da caixa quando desiste, para o telemóvel não o executar mais tarde. Um SMS repetido leva o mesmo identificador e o telemóvel não o duplica.
+- **Fica de fora.** Espera longa (long-poll) em vez de consulta periódica; indicação do relé nos ecrãs do telemóvel.
 
 ## Verificação
 

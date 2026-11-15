@@ -96,7 +96,9 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       // O telemóvel só usa o relé depois de receber o endereço pelo canal do pareamento.
       phoneSynced: url !== '' && getSetting(RELAY_PHONE_KEY) === url,
       // Pareamentos antigos (v1) não têm o segredo de onde saem as chaves do relé.
-      needsPairing: getSetting('smsCompanionPairingVersion') !== '2'
+      needsPairing: getSetting('smsCompanionPairingVersion') !== '2',
+      // Só a app 0.12.0+ sabe consultar o relé.
+      appVersion: readCompanionPresence().device?.appVersion ?? null
     };
   };
 

@@ -112,6 +112,8 @@ describe('relé', () => {
     expect(describeSmsRelay({ ...state, url: '' }).tone).toBe('muted');
     expect(describeSmsRelay({ ...state, needsPairing: true }).line).toContain('parear de novo');
     expect(describeSmsRelay(state).line).toContain('À espera do telemóvel');
+    expect(describeSmsRelay({ ...state, appVersion: '0.11.0' }).line).toBe('O relé exige a app 0.12.0 no telemóvel (tem a 0.11.0)');
+    expect(describeSmsRelay({ ...state, appVersion: '0.12.0' }).line).toContain('À espera do telemóvel');
     expect(describeSmsRelay({ ...state, phoneSynced: true })).toEqual({ tone: 'success', line: 'Relé ativo fora da rede local' });
   });
 });

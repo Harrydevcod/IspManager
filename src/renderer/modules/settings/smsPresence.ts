@@ -12,7 +12,7 @@ export type SmsPresence = {
   warnings: string[];
 };
 
-function olderVersion(version: string, expected: string): boolean {
+export function olderVersion(version: string, expected: string): boolean {
   const a = version.split('.').map((n) => Number.parseInt(n, 10) || 0);
   const b = expected.split('.').map((n) => Number.parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
