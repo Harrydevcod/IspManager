@@ -113,44 +113,47 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         onChange={(event) => onUpdate('noticeCooldownDays', event.target.value)}
       />
       {usesMeta && (
-        <Message tone="neutral">
-          Texto livre só chega a quem escreveu à empresa nas últimas 24 horas. Para avisos iniciados pela empresa, escolha modelos aprovados.
-        </Message>
+        <div className="wide-field meta-templates-head">
+          <Button
+            variant="secondary"
+            onClick={() => { void loadModels(); }}
+            disabled={!form.metaBusinessAccountId || !form.metaAccessTokenConfigured}
+            title={!form.metaBusinessAccountId || !form.metaAccessTokenConfigured ? 'Guarde o ID da conta e o token primeiro' : undefined}
+          >
+            Consultar modelos aprovados
+          </Button>
+          {modelStatus && <span role="status">{modelStatus}</span>}
+        </div>
       )}
-      {usesMeta && <div className="wide-field">
-        <p>Guarde o ID da conta e o token antes de consultar os modelos.</p>
-        <Button variant="secondary" onClick={() => { void loadModels(); }}>Consultar modelos aprovados</Button>
-        {modelStatus && <p role="status">{modelStatus}</p>}
-        {([
-          ['metaTemplateInvoice', 'Fatura emitida'],
-          ['metaTemplateReceipt', 'Recibo'],
-          ['metaTemplateReminder', 'Lembrete antes do vencimento'],
-          ['metaTemplateOverdue', 'Fatura em atraso'],
-          ['metaTemplateWarning', 'Aviso de atraso prolongado'],
-          ['metaTemplateSuspension', 'Aviso de suspensão']
-        ] as const).map(([field, label]) => {
-          const selected = form[field] || '';
-          const chosen = models.find((model) => `${model.name}|${model.language}` === selected);
-          const text = field === 'metaTemplateOverdue' ? form.whatsappOverdueTemplate : field === 'metaTemplateSuspension' ? form.whatsappSuspensionTemplate : field === 'metaTemplateInvoice' ? form.whatsappInvoiceReadyTemplate : field === 'metaTemplateReceipt' ? form.whatsappReceiptTemplate : field === 'metaTemplateReminder' ? form.whatsappReminderTemplate : form.whatsappWarningTemplate;
-          const sourceFields = text?.match(/\{[a-z_]+\}/gi)?.length ?? 0;
-          const modelSlots = chosen ? Array.from(chosen.body.matchAll(/\{\{([^{}]+)\}\}/g), (match) => match[1]) : [];
-          const modelFields = modelSlots.length;
-          const invalidSequence = modelSlots.some((slot, index) => slot !== String(index + 1));
-          const differentText = Boolean(chosen && numberMetaVariables(text) !== chosen.body.replace(/\r\n/g, '\n').trim());
-          return <div key={field}>
-            <Select label={label} value={selected} onChange={(event) => onUpdate(field, event.target.value)}>
-              <option value="">Sem modelo — texto livre</option>
-              {selected && !chosen && <option value={selected}>{selected} (consulte para verificar)</option>}
-              {models.map((model) => <option key={`${model.name}|${model.language}`} value={`${model.name}|${model.language}`}>{model.name} · {model.language}</option>)}
-            </Select>
-            {chosen && <p>{chosen.body}</p>}
-            {chosen && (invalidSequence || (text !== null && sourceFields !== modelFields)) && <Message tone="error">Os campos não correspondem ou não estão numerados pela ordem. O aviso não será enviado até corrigir.</Message>}
-            {chosen && !invalidSequence && sourceFields === modelFields && differentText && <Message tone="error">O texto aprovado difere do texto do ISPM. O aviso não será enviado até corrigir.</Message>}
-            {text !== null && <Button variant="ghost" size="sm" onClick={() => { void copyForMeta(text); }}>Copiar texto para a Meta</Button>}
-          </div>;
-        })}
-        <p>Os campos do texto do ISPM são preenchidos pela ordem em que aparecem. Se não corresponderem ao modelo aprovado, o aviso não é enviado.</p>
-      </div>}
+      {/* Um modelo por aviso, na mesma grelha de duas colunas dos outros campos. */}
+      {usesMeta && ([
+        ['metaTemplateInvoice', 'Fatura emitida'],
+        ['metaTemplateReceipt', 'Recibo'],
+        ['metaTemplateReminder', 'Lembrete antes do vencimento'],
+        ['metaTemplateOverdue', 'Fatura em atraso'],
+        ['metaTemplateWarning', 'Aviso de atraso prolongado'],
+        ['metaTemplateSuspension', 'Aviso de suspensão']
+      ] as const).map(([field, label]) => {
+        const selected = form[field] || '';
+        const chosen = models.find((model) => `${model.name}|${model.language}` === selected);
+        const text = field === 'metaTemplateOverdue' ? form.whatsappOverdueTemplate : field === 'metaTemplateSuspension' ? form.whatsappSuspensionTemplate : field === 'metaTemplateInvoice' ? form.whatsappInvoiceReadyTemplate : field === 'metaTemplateReceipt' ? form.whatsappReceiptTemplate : field === 'metaTemplateReminder' ? form.whatsappReminderTemplate : form.whatsappWarningTemplate;
+        const sourceFields = text?.match(/\{[a-z_]+\}/gi)?.length ?? 0;
+        const modelSlots = chosen ? Array.from(chosen.body.matchAll(/\{\{([^{}]+)\}\}/g), (match) => match[1]) : [];
+        const modelFields = modelSlots.length;
+        const invalidSequence = modelSlots.some((slot, index) => slot !== String(index + 1));
+        const differentText = Boolean(chosen && numberMetaVariables(text) !== chosen.body.replace(/\r\n/g, '\n').trim());
+        return <div key={field} className="meta-template-field">
+          <Select label={label} value={selected} onChange={(event) => onUpdate(field, event.target.value)}>
+            <option value="">Sem modelo — texto livre</option>
+            {selected && !chosen && <option value={selected}>{selected} (consulte para verificar)</option>}
+            {models.map((model) => <option key={`${model.name}|${model.language}`} value={`${model.name}|${model.language}`}>{model.name} · {model.language}</option>)}
+          </Select>
+          {chosen && <p className="meta-template-body">{chosen.body}</p>}
+          {chosen && (invalidSequence || (text !== null && sourceFields !== modelFields)) && <Message tone="error">Os campos não correspondem ou não estão numerados pela ordem. O aviso não será enviado até corrigir.</Message>}
+          {chosen && !invalidSequence && sourceFields === modelFields && differentText && <Message tone="error">O texto aprovado difere do texto do ISPM. O aviso não será enviado até corrigir.</Message>}
+          {text !== null && <Button variant="ghost" size="sm" onClick={() => { void copyForMeta(text); }}>Copiar texto para a Meta</Button>}
+        </div>;
+      })}
       <Toggle
         title="Enviar avisos de atraso automaticamente"
         description="Só com consentimento dos clientes."

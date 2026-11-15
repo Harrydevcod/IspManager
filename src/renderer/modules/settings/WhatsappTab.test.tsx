@@ -42,14 +42,16 @@ describe('WhatsappTab', () => {
     expect(html).toContain('UltraMsg instance ID');
     expect(html).toContain('Token UltraMsg');
     expect(html).not.toContain('Token de acesso Meta');
-    expect(html).not.toContain('24 horas');
+    expect(html).not.toContain('Consultar modelos aprovados');
   });
 
-  test('com a Meta mostra as credenciais da Meta e avisa da janela de 24 horas', () => {
+  test('com a Meta mostra as credenciais da Meta e um modelo por aviso', () => {
     const html = markup({ whatsappProvider: 'meta-cloud' });
     expect(html).toContain('Phone number ID');
     expect(html).toContain('Token de acesso Meta');
-    expect(html).toContain('24 horas');
+    expect(html.match(/class="meta-template-field"/g)).toHaveLength(6);
+    // Sem ID da conta e token, a consulta dos modelos não se pode fazer.
+    expect(html).toMatch(/<button[^>]*disabled[^>]*title="Guarde o ID da conta e o token primeiro"/);
     expect(html).not.toContain('UltraMsg instance ID');
   });
 
