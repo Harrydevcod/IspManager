@@ -285,7 +285,7 @@
 .router-usage-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); min-width: 0; }
 .router-usage-actions .router-usage-since { overflow-wrap: anywhere; }
 
-.router-usage-history { display: grid; gap: var(--space-3); min-width: 0; }
+.router-usage-history { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); min-width: 0; }
 .router-usage-summary { display: grid; gap: var(--space-1); }
 .router-usage-summary-label { color: var(--text-2); font-size: var(--fs-sm); }
 .router-usage-summary-figure { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }

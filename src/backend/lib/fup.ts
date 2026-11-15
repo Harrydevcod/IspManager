@@ -7,7 +7,7 @@ import { normalizeWhatsappPhone, whatsappChannelActive } from './whatsapp-provid
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
 import { bytesPerGb, effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
-import { cycleBounds, starlinkCycleDay, utcDay } from './wan-usage';
+import { cycleBounds, forecastCycle, starlinkCycleDay, utcDay } from './wan-usage';
 import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
@@ -165,6 +165,8 @@ export type OperatorPool = {
   extraConnections: number;
   shareGb: number;
   exhausted: boolean;
+  /** Dia em que o pacote se esgota ao ritmo dos últimos 7 dias; `null` se chega ao fim do ciclo. */
+  exhaustsOn: string | null;
 };
 
 /**
@@ -193,7 +195,8 @@ export function loadOperatorPool(db: Database.Database, now: Date, settings: Fup
     activeClients: n,
     extraConnections: settings.ligacoes_extra_pacote,
     shareGb: packageGb > 0 && n + settings.ligacoes_extra_pacote > 0 ? packageGb / (n + settings.ligacoes_extra_pacote) : 0,
-    exhausted: packageGb > 0 && percent >= settings.limiar_pacote_percent
+    exhausted: packageGb > 0 && percent >= settings.limiar_pacote_percent,
+    exhaustsOn: forecastCycle(db, utcDay(now), cycle, packageGb * bytesPerGb(settings))?.exhaustsOn ?? null
   };
 }
 

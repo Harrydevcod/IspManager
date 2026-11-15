@@ -202,7 +202,44 @@ export function cycleBounds(today: string, anchor: number): { start: string; end
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
-export function loadWanUsage(db: Database.Database, today = utcDay()) {
+export type CycleForecast = {
+  /** Média diária dos últimos 7 dias completos com registo. */
+  paceBytesPerDay: number;
+  /** Total do ciclo se o ritmo se mantiver até ao fim. */
+  projectedBytes: number;
+  /** Dia em que o pacote se esgota a este ritmo; `null` sem pacote ou se chega ao fim do ciclo. */
+  exhaustsOn: string | null;
+};
+
+const shiftDay = (day: string, days: number) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Para onde vai o ciclo da conta: o que já passou mais o ritmo dos últimos 7 dias completos até
+ * ao fim. Hoje ainda vai a meio, por isso conta pelo maior entre o que já passou e um dia médio.
+ * `null` sem nenhum dia completo para medir o ritmo.
+ */
+export function forecastCycle(db: Database.Database, today: string, cycle: { start: string; end: string }, packageBytes = 0): CycleForecast | null {
+  const total = db.prepare('SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) AS bytes, COUNT(DISTINCT day) AS days FROM wan_traffic_daily WHERE day >= ? AND day <= ?');
+  const recent = total.get(shiftDay(today, -7), shiftDay(today, -1)) as { bytes: number; days: number };
+  if (recent.days === 0) return null;
+  const pace = recent.bytes / recent.days;
+  const before = (total.get(cycle.start, shiftDay(today, -1)) as { bytes: number }).bytes;
+  const todayBytes = (total.get(today, today) as { bytes: number }).bytes;
+  const afterToday = before + Math.max(todayBytes, pace);
+  const daysLeft = Math.round((Date.parse(`${cycle.end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  let exhaustsOn: string | null = null;
+  if (packageBytes > 0) {
+    if (afterToday >= packageBytes) exhaustsOn = today;
+    else if (pace > 0) {
+      const day = shiftDay(today, Math.ceil((packageBytes - afterToday) / pace));
+      if (day <= cycle.end) exhaustsOn = day;
+    }
+  }
+  return { paceBytesPerDay: Math.round(pace), projectedBytes: Math.round(afterToday + pace * Math.max(0, daysLeft)), exhaustsOn };
+}
+
+/** `packageBytes`: o pacote da operadora, para a previsão dizer quando se esgota (0 = sem pacote). */
+export function loadWanUsage(db: Database.Database, today = utcDay(), packageBytes = 0) {
   const since = (db.prepare('SELECT MIN(seen_at) AS since FROM wan_counter_state').get() as { since: string | null }).since;
   const routerImportedAt = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() as { value: string } | undefined)?.value ?? null;
   // O dia da instalação é parcial e mistura-se com a contagem antiga da app (MAX): só o seguinte
@@ -223,7 +260,7 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const monthEnd = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10);
   const month = { start: `${today.slice(0, 7)}-01`, end: monthEnd };
   const periods = {
-    cycle: { ...cycle, anchor, total: sumBetween.all(cycle.start, today) as UsageRow[] },
+    cycle: { ...cycle, anchor, total: sumBetween.all(cycle.start, today) as UsageRow[], forecast: forecastCycle(db, today, cycle, packageBytes) },
     month: { ...month, total: monthRows }
   };
   const startDay = cycle.start < month.start ? cycle.start : month.start;

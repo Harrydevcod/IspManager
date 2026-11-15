@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { collectWanUsage, counterDelta, cycleBounds, importRouterUsage, importStarlinkUsage, loadWanUsage, parseWanUsageFile, recordWanUsage, saveStarlinkCycleDay } from './wan-usage';
+import { collectWanUsage, counterDelta, cycleBounds, forecastCycle, importRouterUsage, importStarlinkUsage, loadWanUsage, parseWanUsageFile, recordWanUsage, saveStarlinkCycleDay } from './wan-usage';
 import type { RouterRequest, RouterTransport } from './routeros';
 
 let db: Database.Database;
@@ -178,6 +178,29 @@ describe('tráfego acumulado das WAN', () => {
     expect(result.periods.month.total.map((row) => row.rxBytes)).toEqual([20, 40]);
     saveStarlinkCycleDay(db, 1);
     expect(loadWanUsage(db, '2026-09-26').periods.cycle.total.map((row) => row.rxBytes)).toEqual([20, 40]);
+  });
+
+  test('previsão do ciclo: o ritmo dos últimos 7 dias completos levado até ao fim', () => {
+    const cycle = cycleBounds('2026-11-15', 19); // 19-10 a 18-11
+    expect(forecastCycle(db, '2026-11-15', cycle)).toBeNull(); // sem dias completos não há ritmo
+
+    // Sete dias a 300 e hoje ainda a meio (37).
+    importRouterUsage(db, [
+      ...['08', '09', '10', '11', '12', '13', '14'].map((day) => ({ day: `2026-11-${day}`, interface: 'WAN1', rxBytes: 250, txBytes: 50 })),
+      { day: '2026-11-15', interface: 'WAN1', rxBytes: 30, txBytes: 7 }
+    ]);
+
+    // 2100 até ontem + hoje como um dia médio (300) + 3 dias até 18-11.
+    expect(forecastCycle(db, '2026-11-15', cycle)).toEqual({ paceBytesPerDay: 300, projectedBytes: 3300, exhaustsOn: null });
+    // Pacote de 2600: hoje fecha a 2400, amanhã passa.
+    expect(forecastCycle(db, '2026-11-15', cycle, 2600)?.exhaustsOn).toBe('2026-11-16');
+    // Já gasto: é hoje. Com folga até ao fim do ciclo: não se esgota.
+    expect(forecastCycle(db, '2026-11-15', cycle, 2000)?.exhaustsOn).toBe('2026-11-15');
+    expect(forecastCycle(db, '2026-11-15', cycle, 5000)?.exhaustsOn).toBeNull();
+    // Um dia que já passou da média conta pelo que é.
+    importRouterUsage(db, [{ day: '2026-11-15', interface: 'WAN1', rxBytes: 400, txBytes: 100 }]);
+    expect(forecastCycle(db, '2026-11-15', cycle)?.projectedBytes).toBe(2100 + 500 + 900);
+    expect(loadWanUsage(db, '2026-11-15', 2600).periods.cycle.forecast?.exhaustsOn).toBe('2026-11-15');
   });
 
   test('cycleBounds: ciclo que contém o dia, com passagem de ano e fevereiro', () => {

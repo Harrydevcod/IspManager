@@ -45,6 +45,7 @@ function History({ data: all, period, onPeriod, onAnchor, anchorError }: History
   const totalOf = (name: string) => range?.total.find((row) => row.interface === name);
   const sum = range?.total.reduce((total, row) => total + volume(row), 0) ?? 0;
   const span = range ? `${shortDate(range.start)} → ${shortDate(range.end)}` : '';
+  const forecast = period === 'cycle' ? all.periods?.cycle.forecast : null;
   const current = PERIODS.find((item) => item.id === period)!;
   // O dia escolhido vê-se logo; enquanto grava a caixa fica parada, e se falhar volta ao que estava.
   const [pendingAnchor, setPendingAnchor] = useState<number | null>(null);
@@ -88,12 +89,21 @@ function History({ data: all, period, onPeriod, onAnchor, anchorError }: History
               </>
             )}
           </p>
+          {forecast && (
+            <p className="router-usage-summary-meta router-usage-forecast">
+              {/* Um só bloco de texto: a 420 px parte-se entre palavras, sem um ponto solto no fim da linha. */}
+              <span>
+                A este ritmo: {formatDataVolume(forecast.projectedBytes, true)} no ciclo
+                {forecast.exhaustsOn && <> · <strong>pacote acaba a {shortDate(forecast.exhaustsOn)}</strong></>}
+              </span>
+            </p>
+          )}
           {/* O erro do dia fica junto à caixa que o causou. */}
           {period === 'cycle' && anchorError && <p role="alert" className="field-error router-usage-anchor-error">{anchorError}</p>}
         </div>
       )}
       <div className="router-usage-chart" role="img" aria-label={`Consumo diário das WAN${range ? ` de ${span.replace(' → ', ' a ')}` : ''}`}>
-        <div className="router-usage-bars" style={{ gridTemplateColumns: `repeat(${data.days.length}, 1fr)` }}>
+        <div className="router-usage-bars" style={{ gridTemplateColumns: `repeat(${data.days.length}, minmax(0, 1fr))` }}>
           {data.days.map((day, index) => {
             const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
             const total = rows.reduce((sum, row) => sum + volume(row), 0);
@@ -112,7 +122,7 @@ function History({ data: all, period, onPeriod, onAnchor, anchorError }: History
             );
           })}
         </div>
-        <div className="router-usage-axis" style={{ gridTemplateColumns: `repeat(${data.days.length}, 1fr)` }}>
+        <div className="router-usage-axis" style={{ gridTemplateColumns: `repeat(${data.days.length}, minmax(0, 1fr))` }}>
           {data.days.map((day, index) => (index % 5 === 0 || index === data.days.length - 1) && <span key={day.day} style={{ gridColumn: index + 1 }}>{shortDate(day.day)}</span>)}
         </div>
       </div>
