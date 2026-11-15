@@ -105,7 +105,7 @@ export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObje
       'x-ispm-signature': signature
     },
     body: method === 'POST' ? body : undefined,
-    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined
+    signal: AbortSignal.timeout(timeoutMs ?? 5000)
   });
 }
 
@@ -282,7 +282,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
-    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts,
+    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts, s.android_request_id AS androidRequestId,
            s.created_at AS createdAt, c.full_name AS clientName
     FROM sms_outbox s
     LEFT JOIN clients c ON c.id = s.client_id
@@ -290,6 +290,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     ORDER BY s.id ASC LIMIT 20
   `).all(nowIso) as Array<{
     id: number;
+    androidRequestId: string | null;
     eventType: SmsEventType | 'test' | 'fup_notice';
     toPhone: string;
     body: string;
@@ -309,7 +310,10 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
   let retried = 0;
 
   for (const row of rows) {
-    const requestId = randomUUID();
+    // Persist before the network call: the phone may accept it even when the
+    // response is lost. Reusing the ID lets its request store deduplicate retries.
+    const requestId = row.androidRequestId ?? randomUUID();
+    if (!row.androidRequestId) db.prepare('UPDATE sms_outbox SET android_request_id=? WHERE id=? AND android_request_id IS NULL').run(requestId, row.id);
     const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType, clientName: row.clientName });
     if (result.ok) {
       db.prepare(`
