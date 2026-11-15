@@ -45,6 +45,7 @@ export type RouterEnforcementState = {
     graceDays: number;
     candidateCount: number;
     blockedByCreditCount: number;
+    heldUnnotifiedCount?: number;
     candidatePercent: number;
     guardTriggered: boolean;
     guardReason: string | null;
@@ -436,6 +437,9 @@ export function NetworkTab({
               {routerState.autoSuspension.candidateCount} serviço(s) elegível(eis) após {routerState.autoSuspension.graceDays} dia(s) de tolerância
               {routerState.autoSuspension.blockedByCreditCount > 0
                 ? ` · ${routerState.autoSuspension.blockedByCreditCount} protegido(s) por crédito`
+                : ''}
+              {(routerState.autoSuspension.heldUnnotifiedCount ?? 0) > 0
+                ? ` · ${routerState.autoSuspension.heldUnnotifiedCount} retido(s) sem aviso entregue`
                 : ''}
               {routerState.autoSuspension.guardTriggered
                 ? ` · TRAVADO: ${routerState.autoSuspension.guardReason}`

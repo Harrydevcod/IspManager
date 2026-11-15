@@ -831,6 +831,7 @@ export type DashboardSummary = {
   lowStockModels: number;
   activeServices: number;
   openWorkOrders: number;
+  stalledNotices: number;
   openTickets: number;
   paidMonthCve: number;
   paidPrevMonthCve: number;

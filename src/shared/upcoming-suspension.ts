@@ -17,6 +17,8 @@ export type UpcomingSuspension = {
   balanceCve: number;
   /** Primeiro dia em que o job corta (`cutDate`); hoje se já passou. */
   cutDate: string;
+  /** Sem nenhum aviso entregue: o corte automático espera por um. */
+  held: boolean;
   sms: NoticeDelivery | null;
   whatsapp: NoticeDelivery | null;
 };

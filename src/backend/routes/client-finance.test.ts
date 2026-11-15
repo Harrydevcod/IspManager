@@ -18,7 +18,7 @@ let db: Database.Database;
 let dataDir: string;
 let closeDatabaseForTests: () => void;
 let loadOverdueCandidates: (window: number) => Array<{ paymentId: number }>;
-let loadAutoSuspensionPreview: (db: Database.Database) => { candidates: Array<{ paymentId: number }> };
+let loadAutoSuspensionPreview: (db: Database.Database) => { candidates: Array<{ paymentId: number }>; heldUnnotified: Array<{ paymentId: number }> };
 
 const FUTURE = monthlyDueDates(businessDay(), 2)[1];
 const YESTERDAY = businessDay(Date.now() - 86_400_000);
@@ -100,7 +100,11 @@ const even = (totalCve: number, count: number, first = FUTURE) => {
 const finance = async (clientId: number) =>
   (await app.inject({ method: 'GET', url: `/api/clients/${clientId}/finance` })).json();
 
-const suspendable = () => loadAutoSuspensionPreview(db).candidates.map((c) => c.paymentId);
+// Em condição de corte, com ou sem aviso entregue (sem aviso o corte espera, mas a dívida conta).
+const suspendable = () => {
+  const preview = loadAutoSuspensionPreview(db);
+  return [...preview.candidates, ...preview.heldUnnotified].map((c) => c.paymentId);
+};
 const noticed = () => loadOverdueCandidates(3).map((c) => c.paymentId);
 
 describe('prestações', () => {

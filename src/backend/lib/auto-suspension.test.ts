@@ -37,10 +37,27 @@ function configure(db: Database.Database, dryRun: boolean) {
   set(db, 'routerosDryRun', String(dryRun));
 }
 
+function sms(db: Database.Database, clientId: number, paymentId: number, status: string, eventType = 'suspension_notice') {
+  db.prepare(`
+    INSERT INTO sms_outbox (client_id, payment_id, event_type, to_phone, body, status) VALUES (?, ?, ?, '+2389911111', 'x', ?)
+  `).run(clientId, paymentId, eventType, status);
+}
+
+function whatsapp(db: Database.Database, clientId: number, paymentId: number, status: string, noticeType = 'suspension') {
+  const outboxId = Number(db.prepare(`
+    INSERT INTO whatsapp_outbox (to_phone, kind, body, client_id, origin, status) VALUES ('+2389911111', 'text', 'x', ?, 'auto', ?)
+  `).run(clientId, status).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, outbox_id)
+    VALUES (?, ?, ?, 'auto', '+2389911111', 'x', 'sent', ?)
+  `).run(paymentId, clientId, noticeType, outboxId);
+}
+
 function seed(
   db: Database.Database,
   code: string,
-  dueModifier = '-20 days'
+  dueModifier = '-20 days',
+  notified = true
 ): { clientId: number; serviceId: number; paymentId: number } {
   const clientId = Number(db.prepare(`
     INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'active')
@@ -62,6 +79,9 @@ function seed(
       client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number
     ) VALUES (?, ?, '2026-09', 3000, date('now', ?), 'pending', ?)
   `).run(clientId, serviceId, dueModifier, `FT-${code}`).lastInsertRowid);
+
+  // O corte automático só toca em quem recebeu um aviso: por omissão, o cliente recebeu o SMS.
+  if (notified) sms(db, clientId, paymentId, 'sent');
 
   return { clientId, serviceId, paymentId };
 }
@@ -331,11 +351,12 @@ describe('suspensão automática por falta de pagamento', () => {
     // Reativado há 25 dias: a fatura de -40 dias já era cortável (isenta)...
     reactivateByHand(serviceId, "datetime('now', '-25 days')");
     // ...mas esta só passou a tolerância de 5 dias há 5 dias.
-    db.prepare(`
+    const newInvoice = Number(db.prepare(`
       INSERT INTO payments (
         client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number
       ) VALUES (?, ?, '2026-10', 3000, date('now','-10 days'), 'pending', 'FT-NOVA')
-    `).run(clientId, serviceId);
+    `).run(clientId, serviceId).lastInsertRowid);
+    sms(db, clientId, newInvoice, 'sent', 'payment_overdue');
 
     const preview = loadAutoSuspensionPreview(db);
     expect(preview.candidateCount).toBe(1);
@@ -370,14 +391,14 @@ describe('suspensões a chegar', () => {
   });
 
   test('apanha o corte daqui a 3 dias e deixa de fora o de daqui a 8', () => {
-    const soon = seed(db, 'BREVE', '-3 days');
+    const soon = seed(db, 'BREVE', '-3 days', false);
     seed(db, 'LONGE', '+2 days');
 
     const rows = loadUpcomingSuspensions(db, 7);
 
     expect(rows.map((row) => row.clientCode)).toEqual(['BREVE']);
     const due = db.prepare("SELECT date(due_date, '+6 days') AS cut FROM payments WHERE id = ?").get(soon.paymentId) as { cut: string };
-    expect(rows[0]).toMatchObject({ paymentId: soon.paymentId, cutDate: due.cut, balanceCve: 3000, sms: null, whatsapp: null });
+    expect(rows[0]).toMatchObject({ paymentId: soon.paymentId, cutDate: due.cut, balanceCve: 3000, sms: null, whatsapp: null, held: true });
   });
 
   test('um corte já vencido que o router adiou é hoje, nunca uma data passada', () => {
@@ -392,21 +413,81 @@ describe('suspensões a chegar', () => {
   });
 
   test('o estado do aviso vem da fila, não do registo que diz enviado', () => {
-    const { clientId, paymentId } = seed(db, 'AVISO', '-3 days');
-    const outboxId = Number(db.prepare(`
-      INSERT INTO whatsapp_outbox (to_phone, kind, body, client_id, origin, status) VALUES ('+2389911111', 'text', 'x', ?, 'auto', 'failed')
-    `).run(clientId).lastInsertRowid);
-    db.prepare(`
-      INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, outbox_id)
-      VALUES (?, ?, 'suspension', 'auto', '+2389911111', 'x', 'sent', ?)
-    `).run(paymentId, clientId, outboxId);
-    db.prepare(`
-      INSERT INTO sms_outbox (client_id, payment_id, event_type, to_phone, body, status) VALUES (?, ?, 'suspension_notice', '+2389911111', 'x', 'pending_approval')
-    `).run(clientId, paymentId);
+    const { clientId, paymentId } = seed(db, 'AVISO', '-3 days', false);
+    whatsapp(db, clientId, paymentId, 'failed');
+    sms(db, clientId, paymentId, 'pending_approval');
 
     expect(loadUpcomingSuspensions(db, 7)[0]).toMatchObject({
       whatsapp: { status: 'failed' },
-      sms: { status: 'pending_approval' }
+      sms: { status: 'pending_approval' },
+      held: true
     });
+  });
+});
+
+// 2026-11-15, base real: de 6 a 13/11 nenhum SMS saiu ("fetch failed") e o WhatsApp nunca
+// entregou nada, com o corte ligado. Um cliente não é cortado sem ter recebido um aviso.
+describe('o corte automático espera por um aviso entregue', () => {
+  let db: Database.Database;
+  const live = () => runAutomaticSuspension(db, { probeRouter: async () => undefined });
+  const status = (serviceId: number) => (db.prepare('SELECT status FROM services WHERE id = ?').get(serviceId) as { status: string }).status;
+
+  beforeEach(() => {
+    db = dbForTest();
+    configure(db, false);
+  });
+
+  test('sem nenhum aviso fica ativo e conta como retido', async () => {
+    const { serviceId } = seed(db, 'MUDO', '-20 days', false);
+
+    const run = await live();
+
+    expect(run).toMatchObject({ applied: 0, candidateCount: 0, heldUnnotifiedCount: 1 });
+    expect(run.reason).toContain('sem aviso entregue');
+    expect(status(serviceId)).toBe('active');
+    expect(loadUpcomingSuspensions(db, 7)[0].held).toBe(true);
+  });
+
+  test.each(['failed', 'pending_dispatch', 'pending_approval', 'approved', 'rejected', 'cancelled'])('um SMS %s não é um aviso entregue', async (state) => {
+    const { clientId, serviceId, paymentId } = seed(db, 'SMS', '-20 days', false);
+    sms(db, clientId, paymentId, state);
+    await live();
+    expect(status(serviceId)).toBe('active');
+  });
+
+  test('um SMS de fatura emitida não avisa do corte', async () => {
+    const { clientId, serviceId, paymentId } = seed(db, 'FATURA', '-20 days', false);
+    sms(db, clientId, paymentId, 'sent', 'invoice_issued');
+    await live();
+    expect(status(serviceId)).toBe('active');
+  });
+
+  test.each(['sent', 'delivered', 'read'])('um WhatsApp %s conta como aviso', async (state) => {
+    const { clientId, serviceId, paymentId } = seed(db, 'WA', '-20 days', false);
+    whatsapp(db, clientId, paymentId, state);
+    expect((await live()).applied).toBe(1);
+    expect(status(serviceId)).toBe('suspended');
+  });
+
+  test('um WhatsApp falhado ou só de lembrete antes do vencimento não conta', async () => {
+    const failed = seed(db, 'WAF', '-20 days', false);
+    whatsapp(db, failed.clientId, failed.paymentId, 'failed');
+    const reminder = seed(db, 'WAR', '-20 days', false);
+    whatsapp(db, reminder.clientId, reminder.paymentId, 'sent', 'reminder');
+
+    expect(await live()).toMatchObject({ applied: 0, heldUnnotifiedCount: 2 });
+  });
+
+  test('assim que o aviso sai, a passagem seguinte corta; o retido não entra na trava de quantidade', async () => {
+    set(db, 'autoSuspensionMaxPerRun', '1');
+    const waiting = seed(db, 'ESPERA', '-20 days', false);
+    const warned = seed(db, 'AVISADO');
+
+    expect(await live()).toMatchObject({ applied: 1, heldUnnotifiedCount: 1, guardTriggered: false });
+    expect(status(warned.serviceId)).toBe('suspended');
+
+    sms(db, waiting.clientId, waiting.paymentId, 'sent', 'payment_overdue');
+    expect((await live()).applied).toBe(1);
+    expect(status(waiting.serviceId)).toBe('suspended');
   });
 });

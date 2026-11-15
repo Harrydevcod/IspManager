@@ -409,6 +409,53 @@ describe('loadOperationsStatus', () => {
     expect(status.messaging.findings.map((finding) => finding.code)).not.toContain('messaging.no-fallback');
   });
 
+  // A tabela sms_companion_pairing nunca foi escrita: o relatório dizia "sem emparelhamento" e
+  // "Sem canal alternativo" com o telemóvel pareado.
+  test('com o telemóvel pareado, o WhatsApp bloqueado tem canal alternativo', () => {
+    db.prepare(`
+      INSERT INTO whatsapp_outbox (to_phone, kind, body, status, attempts, last_error)
+      VALUES ('+2389990000', 'text', 'ola', 'failed', 5, 'Your instance has been Stopped due to non-payment.')
+    `).run();
+    const set = db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    set.run('smsCompanionEnabled', 'true');
+    set.run('smsCompanionBaseUrl', 'http://192.168.2.90:8765');
+    set.run('smsCompanionPairingKey', 'selada');
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.messaging.sms).toMatchObject({ enabled: true, paired: true });
+    expect(status.messaging.findings.map((finding) => finding.code)).not.toContain('messaging.no-fallback');
+  });
+
+  // 2026-11-15, base real: de 6 a 13/11, 44 SMS falhados e nenhum entregue, sem alarme nenhum.
+  test('um dia de avisos falhados sem nenhuma entrega é alarme vermelho; uma entrega apaga-o', () => {
+    const codes = () => loadOperationsStatus(db).messaging.findings.map((finding) => finding.code);
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('smsCompanionEnabled', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
+    db.prepare(`
+      INSERT INTO sms_outbox (event_type, to_phone, body, status, last_error) VALUES ('suspension_notice', '+2389990002', 'x', 'failed', 'fetch failed')
+    `).run();
+
+    const finding = loadOperationsStatus(db).messaging.findings.find((item) => item.code === 'messaging.nothing-delivered');
+    expect(finding).toMatchObject({ severity: 'red' });
+    expect(finding?.detail).toContain('fetch failed');
+
+    db.prepare("INSERT INTO sms_outbox (event_type, to_phone, body, status) VALUES ('suspension_notice', '+2389990003', 'x', 'sent')").run();
+    expect(codes()).not.toContain('messaging.nothing-delivered');
+  });
+
+  test('falhas com mais de um dia, ou de um canal desligado, não são alarme', () => {
+    const codes = () => loadOperationsStatus(db).messaging.findings.map((finding) => finding.code);
+    db.prepare(`
+      INSERT INTO sms_outbox (event_type, to_phone, body, status, last_error, created_at) VALUES ('suspension_notice', '+2389990004', 'x', 'failed', 'fetch failed', datetime('now', '-2 days'))
+    `).run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('smsCompanionEnabled', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
+    expect(codes()).not.toContain('messaging.nothing-delivered');
+
+    db.prepare("INSERT INTO sms_outbox (event_type, to_phone, body, status, last_error) VALUES ('suspension_notice', '+2389990005', 'x', 'failed', 'fetch failed')").run();
+    db.prepare("UPDATE app_settings SET value = 'false' WHERE key = 'smsCompanionEnabled'").run();
+    expect(codes()).not.toContain('messaging.nothing-delivered');
+  });
+
   test('so assinala falta de reserva no que ja esta instalado', () => {
     insertCatalog('Modelo sem uso', 0, 'router');
     const deployed = insertCatalog('Modelo em campo', 0);

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
+import { stalledNotices } from './notice-delivery';
 import { businessMonth, businessYear, SQL_BUSINESS_TODAY, sqlBusinessDate } from '../../shared/business-day';
 
 type DashboardMetricRow = {
@@ -237,6 +238,8 @@ export function loadDashboardSummary(db: Database.Database = getSqliteDatabase()
     lowStockModels: summary.lowStockModels ?? 0,
     activeServices: summary.activeServices ?? 0,
     openWorkOrders: summary.openWorkOrders ?? 0,
+    // Avisos falhados nas últimas 24 h sem nenhuma entrega; 0 quando algum chegou.
+    stalledNotices: stalledNotices(db)?.failed ?? 0,
     openTickets: summary.openTickets ?? 0,
     paidMonthCve: Number(summary.paidMonthCve) || 0,
     paidPrevMonthCve: Number(summary.paidPrevMonthCve) || 0,
