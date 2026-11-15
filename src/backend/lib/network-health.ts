@@ -3,6 +3,7 @@ import { readProbeConfig } from './network-probe';
 import { DHCP_CHURN_THRESHOLD } from './routeros';
 import { DROP_CAPTURE_PREFIX } from './routeros-drop-capture-script';
 import type { FindingKind } from './router-log-watch';
+import { loadStarlinkHealth, type StarlinkHealth } from './starlink-dish';
 
 export type HealthTone = 'ok' | 'warn' | 'danger';
 export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
@@ -40,6 +41,8 @@ export type NetworkHealth = {
   /** O retrato que o script `ispm-queda` tirou no início da última queda em bloco. */
   dropCapture: DropCapture | null;
   diary: DiaryEntry[];
+  /** A antena Starlink por dentro; `null` se nunca foi lida. */
+  starlink: StarlinkHealth | null;
 };
 
 export type DropCaptureHost = { host: string; deviceName: string | null; mac: string; arp: string; port: string };
@@ -238,9 +241,12 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     .sort((a, b) => SEVERITY.indexOf(a.kind) - SEVERITY.indexOf(b.kind) || b.count - a.count);
 
   const dayAgo = localSql(new Date(now.getTime() - 24 * 3_600_000));
-  const tone: HealthTone = downNow.some((row) => row.kind === 'backbone') || findings.some((row) => CRITICAL_KINDS.includes(row.kind) && row.lastAt >= dayAgo)
+  const starlink = loadStarlinkHealth(db, hours, now);
+  const tone: HealthTone = downNow.some((row) => row.kind === 'backbone') || findings.some((row) => CRITICAL_KINDS.includes(row.kind) && row.lastAt >= dayAgo) ||
+    starlink?.outageCause
     ? 'danger'
-    : antennas.length > 0 || findings.some((row) => WARN_KINDS.includes(row.kind)) ? 'warn' : 'ok';
+    : antennas.length > 0 || findings.some((row) => WARN_KINDS.includes(row.kind)) || (starlink && (starlink.longCuts.length > 0 || starlink.alerts.length > 0 || starlink.obstructed))
+      ? 'warn' : 'ok';
 
   return {
     hours,
@@ -257,7 +263,8 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     findings,
     dropPattern: dropPattern(db, now),
     dropCapture: lastDropCapture(db, now, (ip) => (deviceOfIp.get(ip) as { name: string } | undefined)?.name ?? null),
-    diary: listDiary(db).slice(0, 6)
+    diary: listDiary(db).slice(0, 6),
+    starlink
   };
 }
 

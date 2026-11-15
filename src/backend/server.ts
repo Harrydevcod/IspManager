@@ -51,6 +51,7 @@ import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './
 import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runWanUsageIfDue } from './lib/wan-usage';
+import { runStarlinkDishIfDue } from './lib/starlink-dish';
 import { runClientUsageIfDue } from './lib/client-usage';
 import { runFupEngineIfDue } from './lib/fup';
 import { readFupSettings } from './lib/fup-settings';
@@ -350,6 +351,13 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     const routerLogTick = () => { void runJob('router_log_watch', runRouterLogWatchIfDue).catch((err) => app.log.error({ err }, 'router log watch failed')); };
     routerLogTick();
     setInterval(routerLogTick, 5 * 60_000).unref();
+  }
+
+  // A antena Starlink só guarda 15 minutos: lê-se de minuto a minuto. Só leitura. Opt-out com ISPM_STARLINK=off.
+  if (process.env.ISPM_STARLINK !== 'off' && !process.env.VITEST) {
+    const dishTick = () => { void runJob('starlink_dish', () => runStarlinkDishIfDue()).catch((err) => app.log.error({ err }, 'starlink dish failed')); };
+    dishTick();
+    setInterval(dishTick, 60_000).unref();
   }
 
   // Suspensão automática por dívida: decide apenas a intenção na base de dados.

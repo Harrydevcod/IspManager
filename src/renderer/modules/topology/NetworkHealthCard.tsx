@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { antennaDrops, healthSituations, NETWORK_API, routerLogStopped, TONE_LABEL, type NetworkHealth } from './network-health';
+import { antennaDrops, healthSituations, NETWORK_API, routerLogStopped, starlinkLine, TONE_LABEL, type NetworkHealth } from './network-health';
 
 /**
  * A rede no painel inicial: o que a sonda e o registo do router viram nas últimas 72 horas.
@@ -55,6 +55,11 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
               Router: {health.lastRouterReadAt ? formatPtDateTime(health.lastRouterReadAt) : 'por ler'}
               {health.routerJournal && ' · registo contínuo no cartão'}
             </p>
+            {health.starlink && (
+              <p className={`network-health-seen${health.starlink.error ? ' warn' : ''}`} role={health.starlink.error ? 'status' : undefined}>
+                {health.starlink.error ? `${health.starlink.name}: ${health.starlink.error}` : starlinkLine(health.starlink)}
+              </p>
+            )}
             {health.routerReadError ? (
               <p className="network-health-seen warn" role="status">Registo do router por ler: {health.routerReadError}</p>
             ) : stopped && (

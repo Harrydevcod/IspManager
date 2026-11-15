@@ -11,7 +11,8 @@ export type IncidentClient = { clientId: number; clientCode: string; clientName:
 
 export type NetworkIncident = {
   key: string;
-  backboneDeviceId: number;
+  /** `null` num corte da antena Starlink. */
+  backboneDeviceId: number | null;
   name: string;
   zone: string | null;
   status: 'open' | 'resolved' | 'unknown';
@@ -20,6 +21,8 @@ export type NetworkIncident = {
   durationSeconds: number | null;
   draggedDevices: string[];
   clients: IncidentClient[];
+  /** A causa que a antena Starlink deu; `null` nas quedas do backbone. */
+  cause?: string | null;
 };
 
 export type IncidentsResponse = { probeEnabled: boolean; windowDays: number; incidents: NetworkIncident[] };
@@ -37,6 +40,7 @@ const STATUS: Record<NetworkIncident['status'], { label: string; tone: 'danger' 
 
 export function formatDuration(seconds: number | null): string {
   if (seconds === null) return 'Desconhecida';
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
   const minutes = Math.max(1, Math.round(seconds / 60));
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
@@ -133,7 +137,7 @@ function OutagesView({ active, tabs }: ViewProps) {
         // Cabe nos 918 px que a aba tem no ecrã de 1920 a 150%.
         gridTemplateColumns="132px minmax(110px, 1.6fr) minmax(80px, 1fr) 98px 98px 96px 80px 80px"
         empty={live.data.probeEnabled
-          ? <EmptyState icon={ShieldCheck} title="Sem incidentes" description={`Nenhum equipamento do backbone caiu nos últimos ${live.data.windowDays} dias de observação.`} />
+          ? <EmptyState icon={ShieldCheck} title="Sem incidentes" description={`Nenhum equipamento do backbone nem a antena Starlink caiu nos últimos ${live.data.windowDays} dias de observação.`} />
           : <EmptyState icon={Radar} title="Sonda de rede desligada" description="Ligue a sonda em Definições." />} />
 
       <Dialog open={selected !== null} onClose={() => setSelected(null)} size="lg"
@@ -141,6 +145,9 @@ function OutagesView({ active, tabs }: ViewProps) {
         title={selected?.name ?? ''}>
         {selected && (
           <div className="incidents-detail">
+            {selected.cause && (
+              <p className="incidents-dragged"><span className="field-label">Causa</span> {selected.cause}</p>
+            )}
             {selected.draggedDevices.length > 0 && (
               <p className="incidents-dragged"><span className="field-label">Arrastou</span> {selected.draggedDevices.join(', ')}</p>
             )}
