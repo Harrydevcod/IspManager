@@ -7013,6 +7013,11 @@ button.danger:disabled {
 /* Não é .form-actions: lá o último botão pinta-se de primário, e aqui o último
    é "Revogar", destrutivo. Cada botão traz a sua variante. */
 .sms-pairing-actions { display: flex; flex-wrap: wrap; justify-content: center; max-width: 100%; gap: var(--space-2); }
+/* Modelos da Meta: o botão e o estado numa linha; cada modelo é uma célula da grelha. */
+.meta-templates-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); color: var(--text-2); font-size: var(--fs-sm); }
+.meta-template-field { display: grid; gap: var(--space-1-5); justify-items: start; align-content: start; min-width: 0; }
+.meta-template-field > .field { width: 100%; }
+.meta-template-body { margin: 0; color: var(--text-2); font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Relé: os dois campos lado a lado, um por baixo do outro quando não cabem. */
 .sms-relay-panel { grid-column: 1 / -1; justify-items: center; text-align: center; }
 .sms-relay-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); width: 100%; text-align: start; }
