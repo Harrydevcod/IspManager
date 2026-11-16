@@ -20,7 +20,7 @@ test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento'
   const key = createPortalCapability();
   const envelope = encryptPortalSnapshot(key, {
     customerName: 'Ana Lopes', customerCode: 'C001', generatedAt: '2026-11-16T12:00:00Z', creditCents: 0,
-    invoices: [{ number: 'FT 2026/10', dueDate: '2026-11-20', balanceCents: 250000 }],
+    invoices: [{ number: 'FT 2026/10', dueDate: '2026-11-20', balanceCents: 250000, services: 'Internet Standard', period: 'outubro de 2026' }],
     services: [{ plan: 'Standard', status: 'active' }]
   });
   const fetch = await open(`#${key}`, new Response(JSON.stringify({ envelope, expiresAt: Date.now() + 60_000 })));
@@ -28,8 +28,9 @@ test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento'
   const text = document.body.textContent ?? '';
   expect(text).toContain('Ana Lopes · C001');
   expect(text).toContain('Total em aberto: 2.500$00');
-  expect(text).toContain('FT 2026/10 · vence a 20/11/2026');
-  expect(text).toContain('Ativo');
+  expect(text).toContain('FT 2026/10 · outubro de 2026');
+  expect(text).toContain('Internet Standard · vence a 20/11/2026');
+  expect(text).toContain('Internet StandardAtivo');
   // A chave fica no fragmento: o pedido ao relé nunca a leva.
   expect(JSON.stringify(fetch.mock.calls)).not.toContain(key);
 });

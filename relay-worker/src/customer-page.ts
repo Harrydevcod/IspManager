@@ -9,7 +9,7 @@ export const customerScript = `(() => {
   // O mesmo formato do ISPM (shared/money.ts): 2.500$00.
   const money = n => { const a=Math.abs(Math.round(n)); return (n<0?'-':'')+String(Math.trunc(a/100)).replace(/\\B(?=(\\d{3})+(?!\\d))/g,'.')+'$'+String(a%100).padStart(2,'0'); };
   const day = s => /^\\d{4}-\\d{2}-\\d{2}/.test(s||'') ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : (s||'');
-  const add = (id, left, right) => { const li=document.createElement('li'), a=document.createElement('span'), b=document.createElement('strong'); a.textContent=left; b.textContent=right; li.append(a,b); document.getElementById(id).append(li); };
+  const add = (id, left, right, sub) => { const li=document.createElement('li'), a=document.createElement('span'), b=document.createElement('strong'); a.textContent=left; if(sub){ const s=document.createElement('small'); s.textContent=sub; a.append(document.createElement('br'), s); } b.textContent=right; li.append(a,b); document.getElementById(id).append(li); };
   async function run() {
     const key = location.hash.slice(1);
     if(!/^[A-Za-z0-9_-]{43}$/.test(key)) throw Error('O link está incompleto. Peça um novo link ao seu operador.');
@@ -22,11 +22,11 @@ export const customerScript = `(() => {
     const snapshot=JSON.parse(new TextDecoder().decode(plain));
     text('intro',snapshot.customerName+' · '+snapshot.customerCode);
     text('balance','Total em aberto: '+money(snapshot.invoices.reduce((sum, invoice) => sum + invoice.balanceCents, 0)));
-    for(const invoice of snapshot.invoices) add('invoices',(invoice.number || 'Fatura')+' · vence a '+day(invoice.dueDate),money(invoice.balanceCents));
+    for(const invoice of snapshot.invoices) add('invoices',[invoice.number || 'Fatura', invoice.period].filter(Boolean).join(' · '),money(invoice.balanceCents),[invoice.services, 'vence a '+day(invoice.dueDate)].filter(Boolean).join(' · '));
     if(!snapshot.invoices.length) add('invoices','Não há faturas em aberto.','');
     if(snapshot.creditCents>0) add('invoices','Crédito disponível',money(snapshot.creditCents));
     const labels={active:'Ativo',suspended:'Suspenso',cancelled:'Cancelado'};
-    for(const service of snapshot.services) add('services',service.plan || 'Serviço',labels[service.status] || service.status);
+    for(const service of snapshot.services) add('services',service.plan ? 'Internet '+service.plan : 'Serviço',labels[service.status] || service.status);
     if(!snapshot.services.length) add('services','Não há serviços ativos.','');
     text('updated','Informação atualizada em '+new Date(snapshot.generatedAt).toLocaleString('pt-PT',{timeZone:'Atlantic/Cape_Verde'})+'. Os dados podem ter mudado desde então.');
     document.getElementById('content').hidden=false;

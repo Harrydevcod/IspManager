@@ -8,13 +8,15 @@ function fixture() {
     CREATE TABLE clients (id INTEGER PRIMARY KEY, full_name TEXT, client_code TEXT, system_kind TEXT);
     CREATE TABLE services (id INTEGER PRIMARY KEY, client_id INTEGER, plan_id INTEGER, status TEXT);
     CREATE TABLE internet_plans (id INTEGER PRIMARY KEY, name TEXT);
-    CREATE TABLE payments (id INTEGER PRIMARY KEY, client_id INTEGER, amount_cve REAL, status TEXT, document_type TEXT, invoice_number TEXT, due_date TEXT);
+    CREATE TABLE payments (id INTEGER PRIMARY KEY, client_id INTEGER, amount_cve REAL, status TEXT, document_type TEXT, invoice_number TEXT, due_date TEXT, service_id INTEGER, reference_month TEXT, invoice_date TEXT);
+    CREATE TABLE payment_lines (payment_id INTEGER, kind TEXT, description TEXT, sort_order INTEGER, id INTEGER PRIMARY KEY);
     CREATE TABLE payment_receipts (payment_id INTEGER, amount_cve REAL, voided_at TEXT);
     CREATE TABLE client_credits (client_id INTEGER, amount_cve REAL);
     INSERT INTO clients VALUES (1,'Ana','C1',NULL),(2,'Outro','C2',NULL),(3,'Sistema','S','indifferentiated');
     INSERT INTO internet_plans VALUES (1,'Fibra');
     INSERT INTO services VALUES (1,1,1,'active'),(2,2,1,'suspended');
-    INSERT INTO payments VALUES (1,1,1000,'pending','invoice','FT 1','2026-12-01'),(2,2,999,'pending','invoice','FT 2','2026-12-01'),(3,1,500,'cancelled','invoice','FT 3','2026-12-01');
+    INSERT INTO payments VALUES (1,1,1000,'pending','invoice','FT 1','2026-12-01',1,'2026-11',NULL),(2,2,999,'pending','invoice','FT 2','2026-12-01',2,'2026-11',NULL),(3,1,500,'cancelled','invoice','FT 3','2026-12-01',1,'2026-11',NULL);
+    INSERT INTO payment_lines VALUES (1,'internet','Servico de Internet',0,1),(1,'audiovisual','TV',1,2);
     INSERT INTO payment_receipts VALUES (1,250,NULL);
     INSERT INTO client_credits VALUES (1,100);
   `);
@@ -27,7 +29,7 @@ describe('customer portal snapshot', () => {
     try {
       const result = buildCustomerPortalSnapshot(db, 1, new Date('2026-11-16T12:00:00Z'));
       expect(result).toEqual({ customerName: 'Ana', customerCode: 'C1', generatedAt: '2026-11-16T12:00:00.000Z', creditCents: 10000,
-        invoices: [{ number: 'FT 1', dueDate: '2026-12-01', balanceCents: 75000 }], services: [{ plan: 'Fibra', status: 'active' }] });
+        invoices: [{ number: 'FT 1', dueDate: '2026-12-01', balanceCents: 75000, services: 'Internet Fibra e TV', period: 'novembro de 2026' }], services: [{ plan: 'Fibra', status: 'active' }] });
       expect(JSON.stringify(result)).not.toContain('Outro');
     } finally { db.close(); }
   });
