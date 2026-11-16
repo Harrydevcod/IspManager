@@ -16,7 +16,7 @@ async function open(hash: string, response: Response) {
   return fetch;
 }
 
-test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento', async () => {
+test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento (formato antigo, sem empresa)', async () => {
   const key = createPortalCapability();
   const envelope = encryptPortalSnapshot(key, {
     customerName: 'Ana Lopes', customerCode: 'C001', generatedAt: '2026-11-16T12:00:00Z', creditCents: 0,
@@ -27,7 +27,8 @@ test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento'
   const fetch = await open(`#${key}`, new Response(JSON.stringify({ envelope, expiresAt: Date.now() + 60_000 })));
   await vi.waitFor(() => expect(document.getElementById('content')?.hidden).toBe(false));
   const text = document.body.textContent ?? '';
-  expect(text).toContain('Ana Lopes · C001');
+  expect(text).toContain('Ana LopesCliente C001');
+  expect(text).not.toContain('Prestador');
   expect(text).toContain('Total em aberto: 5.500$00');
   expect(text).toContain('FT 2026/10 · outubro de 2026');
   expect(text).toContain('Internet Standard · vence a 20/11/2026');
@@ -35,6 +36,35 @@ test('o instantâneo cifrado pelo ISPM abre no browser com a chave do fragmento'
   expect(text).toContain('Internet StandardAtivo');
   // A chave fica no fragmento: o pedido ao relé nunca a leva.
   expect(JSON.stringify(fetch.mock.calls)).not.toContain(key);
+});
+
+const company = { name: 'NovaTech', nif: '212345678', address: 'Praia', island: 'Santiago', phone: '260 12 34', email: 'geral@novatech.cv' };
+async function openSnapshot(snapshot: Record<string, unknown>) {
+  const key = createPortalCapability();
+  await open(`#${key}`, new Response(JSON.stringify({ envelope: encryptPortalSnapshot(key, snapshot), expiresAt: Date.now() + 60_000 })));
+  await vi.waitFor(() => expect(document.getElementById('content')?.hidden).toBe(false));
+}
+
+test('a empresa aparece ao lado do cliente, e os contactos e as contas no rodapé', async () => {
+  await openSnapshot({ company, customerName: 'Ana Lopes', customerCode: 'C001', customerNif: '123456789', customerAddress: 'Achada Santo António · Santiago',
+    generatedAt: '2026-11-16T12:00:00Z', creditCents: 0, services: [],
+    invoices: [{ number: 'FT 2026/10', dueDate: '2026-11-20', balanceCents: 250000, services: 'Internet Standard', period: 'outubro de 2026' }],
+    bankAccounts: [{ bank: 'BCA', holder: 'NovaTech Lda', account: '0003 0000 12345678901 23', reference: 'C001' }] });
+  const [provider, customer] = [...document.querySelectorAll('.party')].map((node) => node.textContent);
+  expect(provider).toBe('PrestadorNovaTechNIF 212345678Praia · Santiago');
+  expect(customer).toBe('ClienteAna LopesCliente C001NIF 123456789Achada Santo António · Santiago');
+  expect(document.querySelector('a[href="tel:2601234"]')?.textContent).toBe('260 12 34');
+  expect(document.querySelector('a[href="mailto:geral@novatech.cv"]')).not.toBeNull();
+  expect(document.getElementById('pay')?.hidden).toBe(false);
+  expect(document.getElementById('banks')?.textContent).toBe('BCA · NovaTech LdaReferência C0010003 0000 12345678901 23');
+});
+
+test('sem nada para liquidar não há bloco de pagamento, e um contacto inválido não vira link', async () => {
+  await openSnapshot({ company: { ...company, phone: 'javascript:alert(1)', email: 'sem-arroba' }, customerName: 'Rui', customerCode: 'C002',
+    generatedAt: '2026-11-16T12:00:00Z', creditCents: 0, services: [], invoices: [], bankAccounts: [] });
+  expect(document.getElementById('pay')?.hidden).toBe(true);
+  expect(document.querySelectorAll('#contact a')).toHaveLength(0);
+  expect(document.getElementById('contact')?.textContent).toBe('NovaTech');
 });
 
 test('chave errada, link expirado e chave em falta não mostram dados', async () => {
