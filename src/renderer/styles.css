@@ -594,6 +594,51 @@ a:hover {
   color: var(--accent);
 }
 
+/* Legenda do menu recolhido: fixa, fora da sidebar (que tem overflow e a cortaria).
+   Aparece sem atraso; ao passar de um ícone ao seguinte o mesmo nó só se desloca. */
+.nav-rail-tip {
+  position: fixed;
+  z-index: var(--z-popover);
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: nav-rail-tip-in var(--motion-fast) var(--ease-out);
+}
+
+.nav-rail-tip::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -5px;
+  width: 8px;
+  height: 8px;
+  border-left: 1px solid var(--border-2);
+  border-bottom: 1px solid var(--border-2);
+  background: inherit;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+@keyframes nav-rail-tip-in {
+  from { opacity: 0; translate: -4px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-rail-tip { animation: none; }
+}
+
+/* Abaixo de 981px a sidebar é barra horizontal: não há menu recolhido. */
+@media (max-width: 980px) {
+  .nav-rail-tip { display: none; }
+}
+
 /* ---------------------------------------------------------
    Rail — menu recolhido a 64px, só ícones. Fora do modo barra
    horizontal (max-width: 980px), onde a sidebar já é outra coisa.
@@ -3404,7 +3449,8 @@ h2 {
 
 .client-detail dl {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* 5 colunas na largura normal, 2 no ecrã estreito: com 5 fixas o telefone colava ao email. */
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: var(--space-3);
 }
 
@@ -3419,6 +3465,7 @@ h2 {
 .client-detail dd {
   margin: var(--space-1) 0 0;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 /* =========================================================================
@@ -6352,8 +6399,7 @@ label.field-toggle {
   }
 }
 
-/* Destructive-action affordances: paid-cancellation surface and ghost buttons.
-   Used by PaymentsModule when anulling a payment that was already registered. */
+/* Ícones destrutivos (Despesas, Investimentos). Botões com texto usam a variante `critical`. */
 button.danger-ghost {
   color: var(--danger);
 }

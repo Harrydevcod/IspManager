@@ -190,10 +190,9 @@ export function PaymentDetailDialog({
           )}
           {payment.status !== 'cancelled' && (
             <Button
-              variant={payment.status === 'paid' ? 'danger' : 'secondary'}
+              variant={payment.status === 'paid' ? 'critical' : 'secondary'}
               size="sm"
               onClick={() => onOpenCancelForm(payment)}
-              className={payment.status === 'paid' ? 'danger-ghost' : undefined}
               title={payment.status === 'paid'
                 ? 'Anular pagamento ja registado (ex: erro de faturacao)'
                 : 'Anular cobranca'}
