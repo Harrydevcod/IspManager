@@ -11,6 +11,8 @@ import { WHATSAPP_PROVIDER_IDS, whatsappChannelActive, whatsappChannelEnabled, t
 import { smsChannelActive } from '../lib/sms-notices';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOutageTemplate,
+  fallbackWhatsappRestoredTemplate,
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
   fallbackWhatsappReminderTemplate,
@@ -112,6 +114,8 @@ const settingsSchema = z.object({
   whatsappReminderTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappWarningTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappSuspensionTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappOutageTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappRestoredTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappChannelEnabled: strictOptionalBooleanOn,
   autoNoticesEnabled: z.coerce.boolean().optional().default(false),
   noticeCooldownDays: z.coerce.number().int().min(1).max(90).optional().default(7),
@@ -127,6 +131,11 @@ const settingsSchema = z.object({
   metaTemplateSuspension: z.string().max(256).regex(/^(?:[a-z0-9_]+\|[A-Za-z0-9_]+)?$/).optional(),
   metaTemplateInvoice: z.string().max(256).regex(/^(?:[a-z0-9_]+\|[A-Za-z0-9_]+)?$/).optional(),
   metaTemplateReceipt: z.string().max(256).regex(/^(?:[a-z0-9_]+\|[A-Za-z0-9_]+)?$/).optional(),
+  metaTemplateOutage: z.string().max(256).regex(/^(?:[a-z0-9_]+\|[A-Za-z0-9_]+)?$/).optional(),
+  metaTemplateRestored: z.string().max(256).regex(/^(?:[a-z0-9_]+\|[A-Za-z0-9_]+)?$/).optional(),
+  // Aviso de avaria aos clientes a jusante (0107).
+  outageNoticesEnabled: strictOptionalBoolean,
+  outageNoticeDelayMinutes: z.coerce.number().int().min(1).max(240).optional().default(10),
   // Os tokens da Meta passam bem dos 255 caracteres.
   metaAccessToken: z.string().max(1024).optional().nullable(),
   smsCompanionEnabled: strictOptionalBoolean,
@@ -242,6 +251,8 @@ const defaultSettings = {
   whatsappReminderTemplate: fallbackWhatsappReminderTemplate,
   whatsappWarningTemplate: fallbackWhatsappWarningTemplate,
   whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
+  whatsappOutageTemplate: fallbackWhatsappOutageTemplate,
+  whatsappRestoredTemplate: fallbackWhatsappRestoredTemplate,
   whatsappChannelEnabled: true,
   autoNoticesEnabled: false,
   noticeCooldownDays: 7,
@@ -256,6 +267,10 @@ const defaultSettings = {
   metaTemplateSuspension: '',
   metaTemplateInvoice: '',
   metaTemplateReceipt: '',
+  metaTemplateOutage: '',
+  metaTemplateRestored: '',
+  outageNoticesEnabled: false,
+  outageNoticeDelayMinutes: 10,
   metaAccessToken: '',
   smsCompanionEnabled: false,
   smsAutoNoticesEnabled: false,
@@ -354,6 +369,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         || row.key === 'autoSuspensionMaxPercent'
         || row.key === 'stripeTreasuryAccountId'
         || row.key === 'vinti4TreasuryAccountId'
+        || row.key === 'outageNoticeDelayMinutes'
       ) {
         const n = Number(row.value);
         settings[row.key] = Number.isFinite(n) ? n : defaultSettings[row.key];
@@ -367,7 +383,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.whatsappChannelEnabled = row.value !== 'false';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled' || row.key === 'outageNoticesEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {

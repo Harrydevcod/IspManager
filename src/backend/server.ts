@@ -52,6 +52,7 @@ import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runWanUsageIfDue } from './lib/wan-usage';
 import { runStarlinkDishIfDue } from './lib/starlink-dish';
+import { runOutageNoticesIfDue } from './lib/outage-notices';
 import { runClientUsageIfDue } from './lib/client-usage';
 import { runFupEngineIfDue } from './lib/fup';
 import { readFupSettings } from './lib/fup-settings';
@@ -322,6 +323,13 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     };
     probeTick();
     scheduleProbe();
+    // Aviso de avaria aos clientes a jusante: lê os incidentes que a sonda deriva. Enfileira
+    // mensagens, por isso tem a guarda de licença dos outros avisos.
+    const outageTick = () => {
+      if (!licenseAllowsWrites()) return;
+      void runJob('outage_notices', runOutageNoticesIfDue).catch((err) => app.log.error({ err }, 'outage notices failed'));
+    };
+    setInterval(outageTick, 60_000).unref();
   }
 
   if (!process.env.VITEST) {

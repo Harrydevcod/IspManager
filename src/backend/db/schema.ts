@@ -949,6 +949,17 @@ export const starlinkDishOutages = sqliteTable('starlink_dish_outages', {
   cause: text('cause').notNull()
 }, (table) => [primaryKey({ columns: [table.dishId, table.startedAt] })]);
 
+// Avisos de avaria aos clientes a jusante, um por incidente, cliente e tipo (migration 0107).
+export const incidentNotices = sqliteTable('incident_notices', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  incidentKey: text('incident_key').notNull(),
+  clientId: integer('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['outage', 'restored'] }).notNull(),
+  channel: text('channel', { enum: ['whatsapp', 'sms'] }).notNull(),
+  outboxId: integer('outbox_id').notNull(),
+  createdAt: text('created_at').notNull().default("(datetime('now'))")
+});
+
 export const wanCounterState = sqliteTable('wan_counter_state', {
   interface: text('interface').primaryKey(),
   rxLast: integer('rx_last').notNull(),

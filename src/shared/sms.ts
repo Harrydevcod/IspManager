@@ -8,6 +8,8 @@ export const fallbackSmsInvoiceIssuedTemplate = 'Caro cliente, a sua fatura {fat
 export const fallbackSmsReceiptConfirmedTemplate = 'Caro cliente, confirmamos o pagamento de {valor} referente a {mes}. Recibo {recibo}. Muito obrigado, {empresa}';
 export const fallbackSmsPaymentOverdueTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({valor}) venceu a {vencimento}. Pedimos que regularize. Caso tenha pago, ignore. {empresa}';
 export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatura} ({valor}) continua por pagar. A internet pode ser suspensa a {data_suspensao}. Caso tenha pago, ignore. {empresa}';
+export const fallbackSmsOutageTemplate = 'Caro cliente, detetamos uma avaria na rede que afeta a sua internet. A equipa esta a resolver e avisamos quando voltar. Pedimos desculpa. {empresa}';
+export const fallbackSmsRestoredTemplate = 'Caro cliente, a avaria na rede foi resolvida e a sua internet esta reposta. Obrigado pela paciencia. {empresa}';
 
 export type SmsTemplateData = {
   fullName: string;

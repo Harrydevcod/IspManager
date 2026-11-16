@@ -38,6 +38,8 @@ export type SettingsFormState = {
   whatsappReminderTemplate: string;
   whatsappWarningTemplate: string;
   whatsappSuspensionTemplate: string;
+  whatsappOutageTemplate: string;
+  whatsappRestoredTemplate: string;
   whatsappChannelEnabled: boolean;
   autoNoticesEnabled: boolean;
   noticeCooldownDays: string;
@@ -54,6 +56,10 @@ export type SettingsFormState = {
   metaTemplateSuspension: string;
   metaTemplateInvoice: string;
   metaTemplateReceipt: string;
+  metaTemplateOutage: string;
+  metaTemplateRestored: string;
+  outageNoticesEnabled: boolean;
+  outageNoticeDelayMinutes: string;
   /** Só um token novo; vazio = manter o guardado. */
   metaAccessToken: string;
   metaAccessTokenConfigured?: boolean;
