@@ -15,6 +15,12 @@ test('portal routes use an isolated object and reject malformed ids', async () =
   expect(page.status).toBe(200);
   expect(page.headers.get('content-security-policy')).toContain("default-src 'none'");
   expect(page.headers.get('referrer-policy')).toBe('no-referrer');
+  // O link curto (/c#segredo) serve a mesma página, com a mesma CSP.
+  const short = await worker.fetch(new Request('https://example.test/c'), env);
+  expect(short.status).toBe(200);
+  expect(short.headers.get('content-security-policy')).toBe(page.headers.get('content-security-policy'));
+  expect(await short.text()).toBe(await page.text());
+  expect((await worker.fetch(new Request('https://example.test/c/x'), env)).status).toBe(404);
 });
 
 test('the browser script parses without executing', () => {

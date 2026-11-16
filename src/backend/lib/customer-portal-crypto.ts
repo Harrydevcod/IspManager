@@ -1,10 +1,29 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto';
 
 export type PortalEnvelope = { version: 1; nonce: string; ciphertext: string; tag: string };
 
 /** A chave pertence ao link do cliente e nunca deve ser enviada ao relé. */
 export function createPortalCapability(): string {
   return randomBytes(32).toString('base64url');
+}
+
+/**
+ * O segredo do link curto: 128 bits, 22 caracteres. Vai no fragmento (`/c#<segredo>`) e dele
+ * saem o id que o relé conhece e a chave AES que só o browser usa. O browser faz a mesma
+ * derivação (relay-worker/src/customer-page.ts).
+ */
+export function createPortalSecret(): string {
+  return randomBytes(16).toString('base64url');
+}
+
+export function derivePortalLink(secret: string): { id: string; key: string } {
+  if (!/^[A-Za-z0-9_-]{22}$/.test(secret)) throw new Error('Segredo inválido');
+  const bytes = Buffer.from(secret, 'base64url');
+  if (bytes.length !== 16 || bytes.toString('base64url') !== secret) throw new Error('Segredo inválido');
+  // Rótulos diferentes e funções de sentido único: quem tem o id não chega à chave.
+  const id = createHash('sha256').update(`ispm-portal-id:${secret}`).digest('hex');
+  const key = Buffer.from(hkdfSync('sha256', bytes, Buffer.alloc(0), 'ispm-portal-key', 32)).toString('base64url');
+  return { id, key };
 }
 
 function keyFor(capability: string): Buffer {

@@ -19,7 +19,7 @@ export default {
     const url = new URL(request.url);
     const security = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff' };
     if (request.method === 'GET' && url.pathname === '/customer-portal.js') return new Response(customerScript, { headers: { ...security, 'content-type': 'text/javascript; charset=utf-8' } });
-    if (request.method === 'GET' && /^\/customer\/[0-9a-f]{64}$/.test(url.pathname)) return new Response(customerPage, { headers: { ...security, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
+    if (request.method === 'GET' && (url.pathname === '/c' || /^\/customer\/[0-9a-f]{64}$/.test(url.pathname))) return new Response(customerPage, { headers: { ...security, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
     const customer = /^\/customer\/([0-9a-f]{64})\/snapshot$/.exec(url.pathname);
     if (customer) {
       if (!env.CUSTOMER_PORTAL) return new Response(null, { status: 503 });
