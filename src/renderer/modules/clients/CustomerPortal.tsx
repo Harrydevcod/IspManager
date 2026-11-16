@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Link2 } from 'lucide-react';
-import { Badge, Button, Message } from '../../components';
+import { Badge, Button, Field, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 
@@ -54,7 +54,7 @@ export function CustomerPortal({ clientId }: { clientId: number }) {
     </header>
     {url && <div className="customer-portal-new">
       {/* O link leva a chave no fragmento: só existe aqui, não se volta a mostrar. */}
-      <input readOnly aria-label="Link da área do cliente" value={url} onFocus={(event) => event.currentTarget.select()} />
+      <Field label="Link da área do cliente" hideLabel readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
       <Button variant="secondary" size="sm" leadingIcon={<Copy size={14} aria-hidden />} onClick={() => void copy()}>{copied ? 'Copiado' : 'Copiar'}</Button>
     </div>}
     {error && <Message tone="error">{error}</Message>}
