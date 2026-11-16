@@ -46,7 +46,7 @@ describe('renderSmsTemplate', () => {
       dueDate: '2026-06-10',
       referenceMonth: '2026-06',
       invoiceNumber: 'FT-2026-001'
-    }, 'ISPM')).toBe('Caro cliente, a sua fatura FT-2026-001 de junho de 2026, no valor de 4.500$00, foi emitida. Vencimento: 10-06-2026. Obrigado, ISPM');
+    }, 'ISPM')).toBe('Caro cliente, a fatura FT-2026-001 de junho de 2026 (Internet), no valor de 4.500$00, foi emitida. Vence a 10-06-2026. Obrigado, ISPM');
   });
 
   test('renders overdue days', () => {
@@ -59,7 +59,7 @@ describe('renderSmsTemplate', () => {
       invoiceNumber: 'FT-2026-001',
       daysOverdue: 7,
       suspensionDays: 15
-    }, 'ISPM')).toBe('Caro cliente, a fatura FT-2026-001 de junho de 2026 (4.500$00) venceu a 10-06-2026. Pedimos que regularize. Caso tenha pago, ignore. ISPM');
+    }, 'ISPM')).toBe('Caro cliente, a fatura FT-2026-001 de junho de 2026 (Internet, 4.500$00) venceu a 10-06-2026. Caso tenha pago, ignore. ISPM');
   });
 
   test('renders suspension threshold', () => {
@@ -72,7 +72,7 @@ describe('renderSmsTemplate', () => {
       suspensionDays: 15
     }, 'ISPM');
 
-    expect(message).toBe('Caro cliente, a fatura FT-2026-001 (4.500$00) continua por pagar. A internet pode ser suspensa a 25-06-2026. Caso tenha pago, ignore. ISPM');
+    expect(message).toBe('Caro cliente, a fatura FT-2026-001 (Internet, junho de 2026, 4.500$00) esta por pagar. A internet pode ser suspensa a 25-06-2026. ISPM');
     expect(message).not.toMatch(/\{[^}]+\}/);
   });
 

@@ -17,6 +17,7 @@ import { autoSuspensionGraceDays } from './auto-suspension';
 import { SUSPENSION_NOTICE_LEAD_DAYS } from '../../shared/upcoming-suspension';
 import { listMetaCloudTemplates } from './meta-cloud';
 import { readSecret } from './secrets';
+import { describePayments } from './payment-description';
 import { prepareMetaTemplate } from './meta-template';
 import type { WhatsappTemplate } from './whatsapp-provider';
 
@@ -72,6 +73,9 @@ export type OverdueCandidate = {
   daysOverdue: number;
   whatsappOptOut: number;
   paymentLink: string | null;
+  /** `{servico}` e `{mes}` (`describePayments`): o que a fatura cobra e de quando. */
+  services: string;
+  periodLabel: string;
 };
 
 /**
@@ -80,7 +84,8 @@ export type OverdueCandidate = {
  * Ficam de fora as que estão num acordo de pagamento em dia.
  */
 export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[] {
-  return getSqliteDatabase().prepare(`
+  const db = getSqliteDatabase();
+  const rows = db.prepare(`
     SELECT
       py.id AS paymentId,
       c.id AS clientId,
@@ -105,7 +110,9 @@ export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[
       -- Acordo de pagamento em dia (0103): a cobrança dessas faturas é o calendário do acordo.
       AND ${planProtectedSql('py')}
     ORDER BY py.due_date ASC
-  `).all(reminderWindow) as OverdueCandidate[];
+  `).all(reminderWindow) as Array<Omit<OverdueCandidate, 'services' | 'periodLabel'>>;
+  const described = describePayments(db, rows.map((row) => row.paymentId));
+  return rows.map((row) => ({ ...row, services: described.get(row.paymentId)?.services ?? '', periodLabel: described.get(row.paymentId)?.period ?? '' }));
 }
 
 export type OverdueNoticesRun =
@@ -253,7 +260,9 @@ export async function runOverdueNoticesIfDue(
         daysOverdue: row.daysOverdue,
         suspensionDays: grace + 1,
         suspensionDate: cutDate(row.dueDate, grace, todayIso),
-        paymentLink: row.paymentLink
+        paymentLink: row.paymentLink,
+        services: row.services,
+        periodLabel: row.periodLabel
       };
     const body = renderWhatsappTemplate(source, data, companyName);
     let template: WhatsappTemplate | undefined;

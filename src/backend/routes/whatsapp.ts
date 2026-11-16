@@ -22,6 +22,7 @@ import { listMetaCloudTemplates } from '../lib/meta-cloud';
 import { readSecret } from '../lib/secrets';
 import { prepareMetaTemplate } from '../lib/meta-template';
 import type { WhatsappTemplate } from '../lib/whatsapp-provider';
+import { describePayments, describeReceipt } from '../lib/payment-description';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -126,7 +127,12 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         const payment = db.prepare(`SELECT c.id AS clientId, c.full_name AS fullName, c.client_code AS clientCode, c.phone, py.amount_cve AS amountCve, py.due_date AS dueDate, py.reference_month AS referenceMonth, py.invoice_number AS invoiceNumber, py.receipt_number AS receiptNumber, ${openPaymentLinkSql('py')} AS paymentLink FROM payments py JOIN clients c ON c.id = py.client_id WHERE py.id = ?`).get(parsed.data.paymentId) as { clientId: number; fullName: string; clientCode: string; phone: string | null; amountCve: number; dueDate: string; referenceMonth: string; invoiceNumber: string | null; receiptNumber: string | null; paymentLink: string | null } | undefined;
         if (!payment || isSystemClient(db, payment.clientId) || normalizeWhatsappPhone(payment.phone || '') !== to) return reply.status(409).send({ error: 'Pagamento ou telefone nao corresponde ao cliente' });
         const grace = autoSuspensionGraceDays(db);
-        const data = { ...payment, daysOverdue: Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000)), suspensionDays: grace + 1, suspensionDate: cutDate(payment.dueDate, grace) };
+        // Os mesmos dados que a lista de pagamentos dá ao ecrã: senão o texto não bate com o mostrado.
+        const receipt = parsed.data.event === 'receipt' && payment.receiptNumber ? describeReceipt(db, payment.receiptNumber) : null;
+        const own = describePayments(db, [parsed.data.paymentId]).get(parsed.data.paymentId);
+        const data = { ...payment,
+          ...(receipt ? { amountCve: receipt.amountCve, services: receipt.services, periodLabel: receipt.period } : { services: own?.services, periodLabel: own?.period }),
+          daysOverdue: Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000)), suspensionDays: grace + 1, suspensionDate: cutDate(payment.dueDate, grace) };
         const source = getSetting(sourceKey) || fallback;
         const company = getSetting('companyName') || 'ISPM';
         if (renderWhatsappTemplate(source, data, company).trim() !== parsed.data.body) return reply.status(409).send({ error: 'A mensagem mudou; atualize a fatura antes de enviar' });
@@ -221,6 +227,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       WHERE c.system_kind IS NULL AND py.document_type = 'invoice' AND ${overdueSqlPredicate('py')}
       ORDER BY py.due_date ASC
     `).all() as OverdueCandidate[];
+    const described = describePayments(db, candidates.map((row) => row.paymentId));
 
     const grace = autoSuspensionGraceDays(db);
     const suspensionStart = loadFunnel().find((stage) => stage.stage === 'suspension')?.threshold ?? grace + 1;
@@ -311,7 +318,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
           daysOverdue: row.daysOverdue,
           suspensionDays: grace + 1,
           suspensionDate: cutDate(row.dueDate, grace),
-          paymentLink: row.paymentLink
+          paymentLink: row.paymentLink,
+          services: described.get(row.paymentId)?.services,
+          periodLabel: described.get(row.paymentId)?.period
         };
       const body = renderWhatsappTemplate(template, messageData, companyName);
       let metaTemplate: WhatsappTemplate | undefined;

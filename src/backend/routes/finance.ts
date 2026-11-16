@@ -28,6 +28,7 @@ import { cancelPaymentPlan, cancelPaymentPlanSchema, createPaymentPlan, createPa
 import { createManualInvoice, manualInvoiceSchema } from '../lib/manual-invoice';
 import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
 import { clearVinti4Link, openPaymentLinkSql, readVinti4Config, setVinti4Link, vinti4LinkFor } from '../lib/vinti4';
+import { describePayments, describeReceipts } from '../lib/payment-description';
 import { ensurePaymentLink, latestStripeLink, readStripeConfig, refundableReceiptIds, refundStripeReceipt, stripeReceiptIds } from '../lib/stripe-payments';
 import {
   changePppoePassword,
@@ -460,7 +461,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
 
   app.get('/api/payments', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     const db = getSqliteDatabase();
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT
         py.id,
         py.client_id AS clientId,
@@ -510,7 +511,21 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       -- LEFT: uma fatura manual pode não pertencer a serviço nenhum (0081).
       LEFT JOIN services s ON s.id = py.service_id
       ORDER BY py.reference_month DESC, c.full_name
-    `).all();
+    `).all() as Array<{ id: number; receiptNumber: string | null } & Record<string, unknown>>;
+    // O ecrã monta as mensagens: leva o serviço, o período por extenso e, nos recibos, o que se recebeu.
+    const described = describePayments(db, rows.map((row) => row.id));
+    const receipts = describeReceipts(db, rows.flatMap((row) => (row.receiptNumber ? [row.receiptNumber] : [])));
+    return rows.map((row) => {
+      const receipt = row.receiptNumber ? receipts.get(row.receiptNumber) : undefined;
+      return {
+        ...row,
+        servicesLabel: described.get(row.id)?.services ?? '',
+        periodLabel: described.get(row.id)?.period ?? '',
+        receiptAmountCve: receipt?.amountCve ?? null,
+        receiptServicesLabel: receipt?.services ?? null,
+        receiptPeriodLabel: receipt?.period ?? null
+      };
+    });
   });
 
   app.post('/api/billing/preview-monthly', billingWrite, async (request, reply) => {

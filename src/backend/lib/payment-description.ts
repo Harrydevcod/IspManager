@@ -59,14 +59,36 @@ export function describePaymentGroup(db: Database.Database, ids: number[]): Paym
   return { services: describeServiceLines(rows.flatMap((row) => linesOf(row, lines))), period: describePeriods(rows) };
 }
 
+export type ReceiptDescription = PaymentDescription & { amountCve: number };
+
 /**
- * O que um recibo diz ao cliente: o valor recebido (não o da fatura) e o serviço e o período de
- * todas as faturas que liquidou. `null` quando o recibo não existe ou foi anulado.
+ * O que cada recibo diz ao cliente: o valor recebido (não o da fatura) e o serviço e o período de
+ * todas as faturas que liquidou. Os anulados e os inexistentes ficam de fora.
  */
-export function describeReceipt(db: Database.Database, receiptNumber: string): (PaymentDescription & { amountCve: number }) | null {
-  const rows = db.prepare('SELECT payment_id AS paymentId, amount_cve AS amountCve FROM payment_receipts WHERE receipt_number = ? AND voided_at IS NULL')
-    .all(receiptNumber) as Array<{ paymentId: number; amountCve: number }>;
-  if (!rows.length) return null;
-  const amountCve = Math.round(rows.reduce((sum, row) => sum + Number(row.amountCve), 0) * 100) / 100;
-  return { amountCve, ...describePaymentGroup(db, rows.map((row) => row.paymentId)) };
+export function describeReceipts(db: Database.Database, receiptNumbers: string[]): Map<string, ReceiptDescription> {
+  const groups = new Map<string, Array<{ paymentId: number; amountCve: number }>>();
+  for (const part of chunks([...new Set(receiptNumbers)])) {
+    for (const row of db.prepare(`SELECT receipt_number AS receiptNumber, payment_id AS paymentId, amount_cve AS amountCve
+      FROM payment_receipts WHERE voided_at IS NULL AND receipt_number IN (${part.map(() => '?').join(',')})`)
+      .all(...part) as Array<{ receiptNumber: string; paymentId: number; amountCve: number }>) {
+      groups.set(row.receiptNumber, [...(groups.get(row.receiptNumber) ?? []), row]);
+    }
+  }
+  const { payments, lines } = load(db, [...groups.values()].flat().map((row) => row.paymentId));
+  const out = new Map<string, ReceiptDescription>();
+  for (const [number, rows] of groups) {
+    const invoices = rows.map((row) => payments.get(row.paymentId)).filter((row): row is PaymentRow => !!row)
+      .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '') || a.id - b.id);
+    out.set(number, {
+      amountCve: Math.round(rows.reduce((sum, row) => sum + Number(row.amountCve), 0) * 100) / 100,
+      services: describeServiceLines(invoices.flatMap((row) => linesOf(row, lines))),
+      period: describePeriods(invoices)
+    });
+  }
+  return out;
+}
+
+/** Um recibo só; `null` quando não existe ou foi anulado. */
+export function describeReceipt(db: Database.Database, receiptNumber: string): ReceiptDescription | null {
+  return describeReceipts(db, [receiptNumber]).get(receiptNumber) ?? null;
 }

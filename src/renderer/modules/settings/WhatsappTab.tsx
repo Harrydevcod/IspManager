@@ -195,7 +195,7 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       <TemplateField
         field="whatsappTemplate"
         label="Mensagem geral WhatsApp"
-        hint="Variáveis: {nome} {codigo} {empresa} {fatura} {recibo} {valor} (2.500$00) {mes} (por extenso) {vencimento} {dias_atraso} {data_suspensao} {link}."
+        hint="Variáveis: {nome} {codigo} {empresa} {fatura} {recibo} {servico} {valor} (2.500$00) {mes} (por extenso) {vencimento} {dias_atraso} {data_suspensao} {link}."
         value={form.whatsappTemplate}
         recommended={fallbackWhatsappTemplate}
         onUpdate={onUpdate}

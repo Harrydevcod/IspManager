@@ -15,6 +15,7 @@ import { runCompanionTick } from '../lib/companion-tick';
 import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
+import { describePayments, describeReceipt } from '../lib/payment-description';
 import { smsTemplateFor } from '../lib/sms-notices';
 import { cancelPairingSession, confirmPairingSession, readPairingSession, startPairingSession } from '../lib/sms-pairing';
 
@@ -318,11 +319,17 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     }
 
     const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000));
+    // O recibo diz o que se recebeu e todas as faturas que liquidou; os outros, a própria fatura.
+    const db = getSqliteDatabase();
+    const receipt = parsed.data.eventType === 'receipt_confirmed' && payment.receiptNumber ? describeReceipt(db, payment.receiptNumber) : null;
+    const own = describePayments(db, [payment.id]).get(payment.id);
     const body = renderSmsTemplate(smsTemplateFor(parsed.data.eventType), {
       fullName: payment.fullName,
       clientCode: payment.clientCode,
       phone: toPhone,
-      amountCve: payment.amountCve,
+      amountCve: receipt?.amountCve ?? payment.amountCve,
+      services: receipt?.services ?? own?.services,
+      periodLabel: receipt?.period ?? own?.period,
       dueDate: payment.dueDate,
       referenceMonth: payment.referenceMonth,
       invoiceNumber: payment.invoiceNumber,

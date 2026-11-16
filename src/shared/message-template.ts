@@ -1,6 +1,7 @@
 import { formatPtDate, parseDate } from './date';
 import { formatEscudos } from './money';
 import { expandPaymentLink } from './payment-link';
+import { describePeriods, toGsm7 } from './message-describe';
 
 /** Dados de uma mensagem ao cliente, comuns ao WhatsApp e ao SMS. */
 export type MessageTemplateData = {
@@ -19,6 +20,10 @@ export type MessageTemplateData = {
   suspensionDate?: string | null;
   /** Link de pagamento online da fatura; vazio = `{link}` desaparece. */
   paymentLink?: string | null;
+  /** O que a fatura ou o recibo cobra (`describePayments`/`describeReceipt`): `{servico}`. */
+  services?: string | null;
+  /** O período já descrito (vários meses num recibo); sem ele, `{mes}` sai da competência. */
+  periodLabel?: string | null;
 };
 
 /** `2026-11` → `novembro de 2026`. As mensagens levam o mês por extenso. */
@@ -49,7 +54,10 @@ function suspensionDate(dueDate: string | null | undefined, suspensionDays: numb
  * o "ç" do mês ("março") passaria a mensagem para UCS-2, com 70 por parte.
  */
 export function renderMessageTemplate(template: string, data: MessageTemplateData, companyName: string, options: { gsm7?: boolean } = {}): string {
-  const month = formatPtMonthLong(data.referenceMonth);
+  // Instalação, avulsa e anuidade não são um mês `YYYY-MM`: o período vem da data, nunca "-".
+  const month = data.periodLabel || describePeriods([{ referenceMonth: data.referenceMonth || '', dueDate: data.dueDate }]) || '-';
+  const services = data.services || 'Internet';
+  const gsm = (text: string) => (options.gsm7 ? toGsm7(text) : text);
   const values: Record<string, string> = {
     nome: data.fullName || '-',
     cliente: data.fullName || '-',
@@ -59,7 +67,8 @@ export function renderMessageTemplate(template: string, data: MessageTemplateDat
     empresa: companyName || 'ISPM',
     valor: data.amountCve == null ? '-' : formatEscudos(data.amountCve),
     vencimento: formatPtDate(data.dueDate),
-    mes: options.gsm7 ? month.replace(/ç/g, 'c') : month,
+    mes: gsm(month),
+    servico: gsm(services),
     fatura: data.invoiceNumber || '-',
     recibo: data.receiptNumber || '-',
     dias_atraso: days(data.daysOverdue),

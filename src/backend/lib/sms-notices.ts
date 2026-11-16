@@ -118,7 +118,9 @@ function enqueueStageSms(row: OverdueCandidate, stage: NoticeType, ctx: SmsNotic
     daysOverdue: Math.max(0, row.daysOverdue),
     suspensionDays: ctx.graceDays + 1,
     suspensionDate: cutDate(row.dueDate, ctx.graceDays, ctx.today),
-    paymentLink: row.paymentLink
+    paymentLink: row.paymentLink,
+    services: row.services,
+    periodLabel: row.periodLabel
   }, ctx.companyName);
   enqueueSmsNotification({ clientId: row.clientId, paymentId: row.paymentId, eventType, toPhone, body });
   return true;

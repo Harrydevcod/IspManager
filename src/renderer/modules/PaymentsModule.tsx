@@ -291,7 +291,8 @@ export function PaymentsModule({
       },
       companyName,
       {
-        amountCve: payment.amountCve,
+        // O recibo diz o que se recebeu e todas as faturas que liquidou; o servidor confere o mesmo.
+        amountCve: status === 'paid' ? payment.receiptAmountCve ?? payment.amountCve : payment.amountCve,
         dueDate: payment.dueDate,
         referenceMonth: payment.referenceMonth,
         invoiceNumber: payment.invoiceNumber,
@@ -299,7 +300,9 @@ export function PaymentsModule({
         daysOverdue,
         suspensionDays: autoSuspensionGraceDays + 1,
         suspensionDate: cutDate(payment.dueDate, autoSuspensionGraceDays),
-        paymentLink: payment.paymentLinkUrl
+        paymentLink: payment.paymentLinkUrl,
+        services: status === 'paid' ? payment.receiptServicesLabel ?? payment.servicesLabel : payment.servicesLabel,
+        periodLabel: status === 'paid' ? payment.receiptPeriodLabel ?? payment.periodLabel : payment.periodLabel
       }
     );
   }

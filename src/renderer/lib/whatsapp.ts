@@ -34,6 +34,8 @@ type WhatsappTemplateContext = {
   suspensionDays?: number;
   suspensionDate?: string | null;
   paymentLink?: string | null;
+  services?: string | null;
+  periodLabel?: string | null;
 };
 
 export function renderWhatsappMessage(template: string, client: WhatsappMessageData, companyName: string, context: WhatsappTemplateContext = {}) {
