@@ -82,6 +82,13 @@ test('sem WhatsApp, ou com a Meta, segue por SMS sem acentos e em 160 caracteres
   expect(body.length).toBeLessThanOrEqual(160);
 });
 
+test('o SMS cabe num envio em qualquer tipo, mesmo no mês mais comprido', () => {
+  set('companyName', 'NovaTech Telecom');
+  for (const kind of ['manutencao', 'calibracao', 'configuracao'] as const) {
+    expect(renderMaintenanceBodies(db, { ...window, kind, day: '2027-02-28' }).sms.length).toBeLessThanOrEqual(160);
+  }
+});
+
 test('um WhatsApp de manutenção que falhou de vez passa a SMS com o texto do aviso', () => {
   whatsapp(); sms();
   sendMaintenanceNotice(db, tower(), window, null);
