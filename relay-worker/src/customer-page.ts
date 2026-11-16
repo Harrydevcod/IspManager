@@ -22,7 +22,7 @@ export const customerScript = `(() => {
     const snapshot=JSON.parse(new TextDecoder().decode(plain));
     text('intro',snapshot.customerName+' · '+snapshot.customerCode);
     text('balance','Total em aberto: '+money(snapshot.invoices.reduce((sum, invoice) => sum + invoice.balanceCents, 0)));
-    for(const invoice of snapshot.invoices) add('invoices',[invoice.number || 'Fatura', invoice.period].filter(Boolean).join(' · '),money(invoice.balanceCents),[invoice.services, 'vence a '+day(invoice.dueDate)].filter(Boolean).join(' · '));
+    for(const invoice of snapshot.invoices) add('invoices',[invoice.number || 'Fatura', invoice.period].filter(Boolean).join(' · '),money(invoice.balanceCents),[invoice.services && invoice.services[0].toUpperCase()+invoice.services.slice(1), 'vence a '+day(invoice.dueDate)].filter(Boolean).join(' · '));
     if(!snapshot.invoices.length) add('invoices','Não há faturas em aberto.','');
     if(snapshot.creditCents>0) add('invoices','Crédito disponível',money(snapshot.creditCents));
     const labels={active:'Ativo',suspended:'Suspenso',cancelled:'Cancelado'};
