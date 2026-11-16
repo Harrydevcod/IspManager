@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
@@ -145,6 +145,20 @@ function AppShell() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [releaseNotesVersion, setReleaseNotesVersion] = useState<string | null>(null);
   const [navCollapsed, setNavCollapsed] = useState(readSidebarCollapsed);
+  // A legenda do menu recolhido vive fora da sidebar: ela tem overflow e cortava um rótulo lá dentro.
+  const [railTip, setRailTip] = useState<{ label: string; top: number; left: number } | null>(null);
+  useEffect(() => { if (!navCollapsed) setRailTip(null); }, [navCollapsed]);
+  const railTipProps = (label: string) => navCollapsed ? {
+    onPointerEnter: (event: SyntheticEvent<HTMLElement>) => showRailTip(event, label),
+    onFocus: (event: SyntheticEvent<HTMLElement>) => showRailTip(event, label),
+    onPointerLeave: () => setRailTip(null),
+    onBlur: () => setRailTip(null)
+  } : {};
+  function showRailTip(event: SyntheticEvent<HTMLElement>, label: string) {
+    const button = event.currentTarget.getBoundingClientRect();
+    const sidebar = event.currentTarget.closest('.sidebar')?.getBoundingClientRect();
+    setRailTip({ label, top: button.top + button.height / 2, left: (sidebar?.right ?? button.right) + 8 });
+  }
   // Muda a cada pedido do aviso do cofre: remonta as Configurações já no separador Cofre.
   const [vaultOpenRequest, setVaultOpenRequest] = useState(0);
   // O cartão da rede no painel abre a Topologia já nos Incidentes; sair dela esquece o pedido.
@@ -330,7 +344,7 @@ function AppShell() {
     <>
       <a className="skip-link" href="#app-content">Saltar para conteúdo</a>
       <main className="app-shell" data-nav={navCollapsed ? 'rail' : undefined}>
-      <aside className="sidebar">
+      <aside className="sidebar" onScroll={() => setRailTip(null)}>
         <div className="brand">
           <img className="brand-mark" src="./favicon.png" alt="" />
           <div>
@@ -343,7 +357,8 @@ function AppShell() {
             onClick={() => setNavCollapsed((collapsed) => !collapsed)}
             aria-expanded={!navCollapsed}
             aria-label={navCollapsed ? 'Expandir menu' : 'Recolher menu'}
-            title={`${navCollapsed ? 'Expandir' : 'Recolher'} menu (Ctrl+B)`}
+            title={navCollapsed ? undefined : 'Recolher menu (Ctrl+B)'}
+            {...railTipProps('Expandir menu · Ctrl B')}
           >
             {navCollapsed
               ? <PanelLeftOpen size={16} aria-hidden />
@@ -357,7 +372,8 @@ function AppShell() {
           onClick={() => setPaletteOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={paletteOpen}
-          title="Procurar (Ctrl+K)"
+          title={navCollapsed ? undefined : 'Procurar (Ctrl+K)'}
+          {...railTipProps('Procurar · Ctrl K')}
         >
           <Search size={14} aria-hidden />
           <span>Procurar</span>
@@ -377,7 +393,7 @@ function AppShell() {
                 onClick={() => setSection(item.id)}
                 aria-current={section === item.id ? 'page' : undefined}
                 aria-label={`${item.label}${counterLabel}`}
-                title={navCollapsed ? item.label : undefined}
+                {...railTipProps(counter ? `${item.label} · ${counter.count} alerta${counter.count === 1 ? '' : 's'}` : item.label)}
               >
                 <Icon size={18} aria-hidden />
                 <span className="nav-label">{item.label}</span>
@@ -421,6 +437,10 @@ function AppShell() {
           )}
         </div>
       </aside>
+      {railTip && (
+        // Só visual: o aria-label do botão já diz o mesmo ao leitor de ecrã.
+        <div className="nav-rail-tip" aria-hidden="true" style={{ top: railTip.top, left: railTip.left }}>{railTip.label}</div>
+      )}
 
         <section className="content" id="app-content" tabIndex={-1}>
           {presence.data && (presence.data.state === 'offsite' || presence.data.state === 'foreign') && (
