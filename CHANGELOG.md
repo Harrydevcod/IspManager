@@ -4,6 +4,33 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.73](https://github.com/Harrydevcod/IspManager/releases/tag/v2.73.0) — 2026-11-16
+
+### Adicionado
+- **Área do cliente.** Na ficha do cliente, "Criar link" gera uma página com a conta dele, válida por 24 horas, que se envia por WhatsApp ou SMS.
+  - **O que mostra:** a empresa e o cliente lado a lado, como numa fatura (nome, NIF, morada), as faturas em aberto com o serviço e o mês, os serviços, e no rodapé os contactos da empresa.
+  - **Pagamento:** se o cliente tiver faturas por pagar, a página mostra as contas bancárias marcadas para documentos na Tesouraria.
+  - **Link curto:** por exemplo `https://c.novatech.cv/c#…`.
+  - **Privacidade:** os dados vão cifrados e só o link os abre; o relé não os consegue ler.
+  - **Revogar:** "Revogar" desliga o link na hora.
+- **Aviso de avaria.** Quando um equipamento do backbone cai, os clientes que dependem dele recebem um aviso, e outro quando o serviço volta. Liga-se em Configurações › Rede, em "Avisar os clientes de uma avaria".
+- **Aviso de manutenção.** Na ficha de um equipamento do backbone, "Avisar manutenção" avisa os clientes dessa torre e dos ramos atrás dela de uma manutenção, calibração ou mudança de configuração, com o dia e o horário. Antes de enviar, mostra quantos clientes recebem e por que canal.
+- **SMS com as mesmas mensagens do WhatsApp:**
+  - lembrete antes do vencimento e atraso prolongado;
+  - textos de avaria e de reposição editáveis;
+  - mensagem geral pelo botão SMS na ficha do cliente.
+- **Menu recolhido:** passar o rato ou o foco por um ícone mostra o nome do módulo, com os alertas e os atalhos.
+
+### Alterado
+- **Faturas e recibos nas mensagens:**
+  - dizem a que serviço se referem (por exemplo "referente a Internet Standard") e o mês por extenso, também nas faturas de instalação e avulsas;
+  - o recibo diz o valor recebido, mesmo num pagamento parcial, e um recibo de várias faturas indica todos os meses.
+- **Modelos de mensagem:** os que nunca foram editados passam aos textos novos. Os personalizados ficam como estão, com o botão "Usar texto recomendado". Quem usa modelos aprovados da Meta deve aplicar o texto recomendado e voltar a submetê-lo à Meta.
+
+### Corrigido
+- "Anular pago" aparecia como um bloco vermelho sem texto legível.
+- No ecrã estreito, a ficha do cliente colava o telefone ao email, e as ações dos diálogos ocupavam metade da altura.
+
 ## [2.72](https://github.com/Harrydevcod/IspManager/releases/tag/v2.72.0) — 2026-11-15
 
 ### Adicionado
