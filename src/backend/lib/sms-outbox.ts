@@ -6,6 +6,9 @@ import { readSecret } from './secrets';
 import { createSmsSignature, verifyResponseSignature } from './sms-signing';
 import { relayConfig, relayFetch } from './sms-relay';
 import type { SmsEventType } from '../../shared/sms';
+
+/** Tudo o que entra na fila: as etapas de cobrança e os avisos que não são cobrança. */
+export type SmsOutboxEvent = SmsEventType | 'test' | 'fup_notice' | 'outage_notice' | 'outage_restored' | 'general' | 'maintenance_notice';
 import { outageDispatchAllowed } from './outage-notice-policy';
 
 const DEFAULT_COMPANION_PORT = 8765;
@@ -16,7 +19,7 @@ export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: f
 export type SmsStatusResult = { status: SmsOutboxStatus; error?: string; deliveredAt?: string | null };
 
 export type SmsOutboxDeps = {
-  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice'; clientName: string | null }) => Promise<SmsDispatchResult>;
+  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsOutboxEvent; clientName: string | null }) => Promise<SmsDispatchResult>;
   fetchStatus: (androidRequestId: string) => Promise<SmsStatusResult>;
 };
 
@@ -24,7 +27,7 @@ export type EnqueueSmsInput = {
   clientId?: number | null;
   paymentId?: number | null;
   serviceId?: number | null;
-  eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice';
+  eventType: SmsOutboxEvent;
   toPhone: string;
   body: string;
 };
@@ -280,7 +283,7 @@ export async function selfHealCompanionAddress(): Promise<void> {
   }
 }
 
-async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice'; clientName: string | null }): Promise<SmsDispatchResult> {
+async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsOutboxEvent; clientName: string | null }): Promise<SmsDispatchResult> {
   try {
     const response = await signedFetch('/requests', 'POST', entry);
     const json = await readJson(response);
@@ -340,12 +343,12 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     FROM sms_outbox s
     LEFT JOIN clients c ON c.id = s.client_id
     WHERE s.status='pending_dispatch' AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= ?)
-      AND (s.event_type <> 'outage_notice' OR ? = 1)
+      AND (s.event_type NOT IN ('outage_notice', 'outage_restored') OR ? = 1)
     ORDER BY s.id ASC LIMIT 20
   `).all(nowIso, outageDispatchAllowed(db, now) ? 1 : 0) as Array<{
     id: number;
     androidRequestId: string | null;
-    eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice';
+    eventType: SmsOutboxEvent;
     toPhone: string;
     body: string;
     attempts: number;

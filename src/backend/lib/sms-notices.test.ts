@@ -75,10 +75,10 @@ const outbox = () => db.prepare('SELECT payment_id AS paymentId, event_type AS e
   Array<{ paymentId: number; eventType: string; toPhone: string; body: string; status: string }>;
 
 describe('smsEventForStage', () => {
-  test('maps the funnel to SMS templates and leaves the pre-due reminder out', () => {
-    expect(mod.smsEventForStage('reminder')).toBeNull();
+  test('cada etapa do funil tem o seu SMS', () => {
+    expect(mod.smsEventForStage('reminder')).toBe('payment_reminder');
     expect(mod.smsEventForStage('overdue')).toBe('payment_overdue');
-    expect(mod.smsEventForStage('warning')).toBe('payment_overdue');
+    expect(mod.smsEventForStage('warning')).toBe('payment_warning');
     expect(mod.smsEventForStage('suspension')).toBe('suspension_notice');
   });
 });
@@ -102,22 +102,23 @@ describe('runSmsOverdueNoticesIfDue', () => {
     enableSms();
     const susp = insertInvoice({ code: 'SUSP', phone: '9910000', daysFromDue: 20 });
     const late = insertInvoice({ code: 'LATE', phone: '238 992 0000', daysFromDue: 3 });
-    insertInvoice({ code: 'SOON', phone: '9930000', daysFromDue: -2 }); // lembrete: sem SMS
+    const soon = insertInvoice({ code: 'SOON', phone: '9930000', daysFromDue: -2 }); // lembrete: também por SMS
     insertInvoice({ code: 'OPT', phone: '9940000', daysFromDue: 20, optOut: true });
     insertInvoice({ code: 'NOPH', phone: null, daysFromDue: 20 });
     insertInvoice({ code: 'BAD', phone: '12', daysFromDue: 20 });
 
     const result = mod.runSmsOverdueNoticesIfDue(daytime());
-    expect(result).toMatchObject({ ran: true, enqueued: 2, skipped: 4 });
+    expect(result).toMatchObject({ ran: true, enqueued: 3, skipped: 3 });
 
     const rows = outbox();
-    expect(rows.map((r) => [r.paymentId, r.eventType])).toEqual([[susp, 'suspension_notice'], [late, 'payment_overdue']]);
+    expect(rows.map((r) => [r.paymentId, r.eventType])).toEqual(expect.arrayContaining([[susp, 'suspension_notice'], [late, 'payment_overdue'], [soon, 'payment_reminder']]));
+    const lateRow = rows.find((r) => r.paymentId === late)!;
     expect(rows.every((r) => r.status === 'pending_dispatch')).toBe(true);
-    expect(rows[1].toPhone).toBe('+2389920000');
-    expect(rows[1].body).toContain('FT-LATE');
+    expect(lateRow.toPhone).toBe('+2389920000');
+    expect(lateRow.body).toContain('FT-LATE');
     // A mesma data que o insertInvoice gravou (há 3 dias), no formato da mensagem.
     const { lateDue } = db.prepare(`SELECT strftime('%d-%m-%Y', 'now', '-3 days') AS lateDue`).get() as { lateDue: string };
-    expect(rows[1].body).toContain(`venceu a ${lateDue}`);
+    expect(lateRow.body).toContain(`venceu a ${lateDue}`);
   });
 
   test('runs once per day', () => {

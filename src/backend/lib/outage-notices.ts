@@ -2,7 +2,7 @@ import { getSqliteDatabase } from '../db/database';
 import { loadIncidents } from './network-incidents';
 import { enqueueWhatsapp } from './whatsapp-outbox';
 import { enqueueSmsNotification } from './sms-outbox';
-import { outageSmsBody, smsChannelActive } from './sms-notices';
+import { outageSmsBody, outageSmsEvent, smsChannelActive } from './sms-notices';
 import { normalizeWhatsappPhone, resolveWhatsappProvider, whatsappChannelActive } from './whatsapp-provider';
 import { listMetaCloudTemplates } from './meta-cloud';
 import { prepareMetaTemplate } from './meta-template';
@@ -125,7 +125,7 @@ export async function runOutageNoticesIfDue(now: Date = new Date()): Promise<Out
     db.transaction(() => {
       const outboxId = channel === 'whatsapp'
         ? enqueueWhatsapp({ toPhone: to, kind: 'text', body: renderWhatsappTemplate(sources[kind], data, companyName), clientId, origin: 'auto', template: prepared?.ok ? prepared.template : undefined })
-        : enqueueSmsNotification({ clientId, eventType: 'outage_notice', toPhone: to, body: outageSmsBody(kind) });
+        : enqueueSmsNotification({ clientId, eventType: outageSmsEvent(kind), toPhone: to, body: outageSmsBody(kind) });
       record.run(incidentKey, clientId, kind, channel, outboxId);
     })();
     counts[kind] += 1;

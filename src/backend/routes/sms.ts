@@ -16,7 +16,8 @@ import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
 import { describePayments, describeReceipt } from '../lib/payment-description';
-import { smsTemplateFor } from '../lib/sms-notices';
+import { smsChannelActive, smsTemplateFor } from '../lib/sms-notices';
+import { fallbackSmsGeneralTemplate } from '../../shared/sms';
 import { cancelPairingSession, confirmPairingSession, readPairingSession, startPairingSession } from '../lib/sms-pairing';
 
 const paymentSmsSchema = z.object({
@@ -347,6 +348,26 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       toPhone,
       body
     });
+    return { ok: true, id: outboxId, status: 'pending_dispatch' };
+  });
+
+  // A mensagem geral (a mesma do botão WhatsApp na ficha), pelo SMS: o modelo do SMS, sem acentos.
+  app.post('/api/clients/:id/sms-general', canSend, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'Pedido SMS invalido' });
+    const db = getSqliteDatabase();
+    const client = db.prepare('SELECT id, full_name AS fullName, client_code AS clientCode, phone, whatsapp_opt_out AS optOut FROM clients WHERE id = ?')
+      .get(id) as { id: number; fullName: string; clientCode: string | null; phone: string | null; optOut: number } | undefined;
+    if (!client) return reply.status(404).send({ error: 'Cliente nao encontrado' });
+    if (isSystemClient(db, client.id)) return reply.status(409).send({ error: SYSTEM_CLIENT_ERROR });
+    if (client.optOut) return reply.status(409).send({ error: 'O cliente recusou avisos' });
+    const toPhone = normalizeSmsPhone(client.phone || '');
+    if (!toPhone) return reply.status(400).send({ error: 'Cliente sem telefone SMS valido' });
+    if (!smsChannelActive(db)) return reply.status(409).send({ error: 'Canal SMS desligado ou telemovel por parear' });
+    const body = renderSmsTemplate(getSetting('smsGeneralTemplate') || fallbackSmsGeneralTemplate,
+      { fullName: client.fullName, clientCode: client.clientCode, phone: toPhone }, getSetting('companyName') || 'ISPM');
+    const outboxId = enqueueSmsNotification({ clientId: client.id, eventType: 'general', toPhone, body });
+    recordAudit(request, { action: 'sms.general', entityType: 'client', entityId: client.id });
     return { ok: true, id: outboxId, status: 'pending_dispatch' };
   });
 }

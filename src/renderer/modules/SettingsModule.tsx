@@ -20,7 +20,12 @@ import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
   fallbackSmsReceiptConfirmedTemplate,
-  fallbackSmsSuspensionNoticeTemplate
+  fallbackSmsSuspensionNoticeTemplate,
+  fallbackSmsPaymentReminderTemplate,
+  fallbackSmsPaymentWarningTemplate,
+  fallbackSmsOutageTemplate,
+  fallbackSmsRestoredTemplate,
+  fallbackSmsGeneralTemplate,
 } from '../../shared/sms';
 import { currentSmsReportMonth } from '../../shared/sms-report';
 import type { SmsMonthlyReport, SmsStatus } from '../types';
@@ -156,6 +161,11 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
     smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
     smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate,
+    smsPaymentReminderTemplate: fallbackSmsPaymentReminderTemplate,
+    smsPaymentWarningTemplate: fallbackSmsPaymentWarningTemplate,
+    smsOutageTemplate: fallbackSmsOutageTemplate,
+    smsRestoredTemplate: fallbackSmsRestoredTemplate,
+    smsGeneralTemplate: fallbackSmsGeneralTemplate,
     networkProbeEnabled: false,
     networkProbeIntervalSeconds: '60',
     networkProbeIncludeClients: false,

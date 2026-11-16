@@ -354,3 +354,34 @@ describe('relé do telemóvel SMS', () => {
     expect((await put({ url: '' })).json()).toEqual({ url: '', adminKeyConfigured: false, phoneSynced: false, needsPairing: true, appVersion: null });
   });
 });
+
+describe('POST /api/clients/:id/sms-general', () => {
+  const activate = () => {
+    const set = db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    set.run('smsCompanionEnabled', 'true');
+    set.run('smsCompanionBaseUrl', 'http://10.0.0.9:8765');
+    writeSecret(db, 'smsCompanionPairingKey', 'k');
+  };
+  const client = (phone: string | null, optOut = 0) => db.prepare(`INSERT INTO clients (client_code, full_name, phone, status, whatsapp_opt_out) VALUES ('G1', 'Ana', ?, 'active', ?)`)
+    .run(phone, optOut).lastInsertRowid as number;
+
+  test('põe na fila a mensagem geral do SMS, sem acentos', async () => {
+    activate();
+    const id = client('9912233');
+    const response = await app.inject({ method: 'POST', url: `/api/clients/${id}/sms-general` });
+    expect(response.statusCode).toBe(200);
+    const row = db.prepare('SELECT event_type AS eventType, to_phone AS toPhone, body FROM sms_outbox').get() as { eventType: string; toPhone: string; body: string };
+    expect(row).toMatchObject({ eventType: 'general', toPhone: '+2389912233' });
+    expect(row.body).toMatch(/^Caro cliente, fala a .+ servico de internet\.$/);
+  });
+
+  test('recusa sem canal, sem telefone ou com avisos recusados', async () => {
+    expect((await app.inject({ method: 'POST', url: `/api/clients/${client('9912233')}/sms-general` })).statusCode).toBe(409);
+    activate();
+    db.prepare('DELETE FROM clients').run();
+    expect((await app.inject({ method: 'POST', url: `/api/clients/${client(null)}/sms-general` })).statusCode).toBe(400);
+    db.prepare('DELETE FROM clients').run();
+    expect((await app.inject({ method: 'POST', url: `/api/clients/${client('9912233', 1)}/sms-general` })).statusCode).toBe(409);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM sms_outbox').get() as { n: number }).n).toBe(0);
+  });
+});

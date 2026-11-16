@@ -8,7 +8,12 @@ import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
   fallbackSmsReceiptConfirmedTemplate,
-  fallbackSmsSuspensionNoticeTemplate
+  fallbackSmsSuspensionNoticeTemplate,
+  fallbackSmsPaymentReminderTemplate,
+  fallbackSmsPaymentWarningTemplate,
+  fallbackSmsOutageTemplate,
+  fallbackSmsRestoredTemplate,
+  fallbackSmsGeneralTemplate,
 } from '../../../shared/sms';
 import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 import { describeSmsPairing, describeSmsPresence, type SmsPairingSession } from './smsPresence';
@@ -243,6 +248,41 @@ export function SmsTab({
         label="SMS: aviso de suspensão"
         value={form.smsSuspensionNoticeTemplate}
         recommended={fallbackSmsSuspensionNoticeTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsPaymentReminderTemplate"
+        label="SMS: lembrete antes do vencimento"
+        value={form.smsPaymentReminderTemplate}
+        recommended={fallbackSmsPaymentReminderTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsPaymentWarningTemplate"
+        label="SMS: atraso prolongado"
+        value={form.smsPaymentWarningTemplate}
+        recommended={fallbackSmsPaymentWarningTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsOutageTemplate"
+        label="SMS: avaria na rede"
+        value={form.smsOutageTemplate}
+        recommended={fallbackSmsOutageTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsRestoredTemplate"
+        label="SMS: serviço reposto"
+        value={form.smsRestoredTemplate}
+        recommended={fallbackSmsRestoredTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsGeneralTemplate"
+        label="SMS: mensagem geral"
+        value={form.smsGeneralTemplate}
+        recommended={fallbackSmsGeneralTemplate}
         onUpdate={onUpdate}
       />
     </>
