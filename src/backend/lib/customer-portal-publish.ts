@@ -1,6 +1,5 @@
-import { randomBytes } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { createPortalCapability, encryptPortalSnapshot } from './customer-portal-crypto';
+import { createPortalSecret, derivePortalLink, encryptPortalSnapshot } from './customer-portal-crypto';
 import { buildCustomerPortalSnapshot } from './customer-portal-snapshot';
 import { normalizeRelayUrl } from './sms-relay';
 
@@ -15,15 +14,15 @@ export async function issueCustomerPortal(db: Database.Database, clientId: numbe
   if (!adminKey) throw new Error('Relé por configurar');
   const origin = originFor(relay);
   const snapshot = buildCustomerPortalSnapshot(db, clientId, now);
-  const id = randomBytes(32).toString('hex');
-  const key = createPortalCapability();
+  const secret = createPortalSecret();
+  const { id, key } = derivePortalLink(secret);
   const expiresAt = now.getTime() + 24 * 60 * 60 * 1000;
   const body = JSON.stringify({ envelope: encryptPortalSnapshot(key, snapshot), expiresAt });
   db.prepare('INSERT INTO customer_portal_links (id, client_id, relay_origin, expires_at) VALUES (?, ?, ?, ?)').run(id, clientId, origin, expiresAt);
   const response = await fetch(`${origin}/customer/${id}/snapshot`, { method: 'PUT', headers: { authorization: `Bearer ${adminKey}`, 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error('Não foi possível publicar a página');
   db.prepare("UPDATE customer_portal_links SET published_at = datetime('now') WHERE id = ?").run(id);
-  return { id, expiresAt, url: `${origin}/customer/${id}#${key}` };
+  return { id, expiresAt, url: `${origin}/c#${secret}` };
 }
 
 export async function revokeCustomerPortal(db: Database.Database, id: string, relay: string, adminKey: string) {
