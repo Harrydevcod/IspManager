@@ -3827,9 +3827,14 @@ h2 {
   }
 
   .inline-actions > *,
-  .filter-bar > *,
-  .dialog-actions > button {
+  .filter-bar > * {
     min-width: min(100%, 180px);
+  }
+
+  /* Duas colunas: uma por linha comia metade do diálogo (a ficha do cliente tem seis ações). */
+  .dialog-actions > button {
+    flex: 1 1 calc(50% - var(--space-2));
+    min-width: 0;
   }
 
   .filter-bar {
