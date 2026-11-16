@@ -3,6 +3,7 @@ import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { TemplateField } from './TemplateField';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappMaintenanceTemplate,
   fallbackWhatsappOutageTemplate,
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
@@ -240,6 +241,14 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         label="Aviso de suspensão"
         value={form.whatsappSuspensionTemplate}
         recommended={fallbackWhatsappSuspensionTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="whatsappMaintenanceTemplate"
+        label="Aviso de manutenção"
+        hint="Variáveis: {data} {inicio} {fim} {motivo} {empresa}."
+        value={form.whatsappMaintenanceTemplate}
+        recommended={fallbackWhatsappMaintenanceTemplate}
         onUpdate={onUpdate}
       />
       <TemplateField field="whatsappOutageTemplate" label="Aviso de avaria" value={form.whatsappOutageTemplate} recommended={fallbackWhatsappOutageTemplate} onUpdate={onUpdate} />

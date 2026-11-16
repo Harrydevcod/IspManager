@@ -959,6 +959,28 @@ export const starlinkDishOutages = sqliteTable('starlink_dish_outages', {
   cause: text('cause').notNull()
 }, (table) => [primaryKey({ columns: [table.dishId, table.startedAt] })]);
 
+// Avisos de manutenção numa torre ou ramo e os seus destinatários (migration 0111).
+export const maintenanceNotices = sqliteTable('maintenance_notices', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  backboneDeviceId: integer('backbone_device_id').notNull().references(() => backboneDevices.id),
+  kind: text('kind', { enum: ['manutencao', 'calibracao', 'configuracao'] }).notNull(),
+  day: text('day').notNull(),
+  startsAt: text('starts_at').notNull(),
+  endsAt: text('ends_at').notNull(),
+  whatsappBody: text('whatsapp_body').notNull(),
+  smsBody: text('sms_body').notNull(),
+  createdBy: integer('created_by').references(() => users.id),
+  createdAt: text('created_at').notNull().default("(datetime('now'))")
+});
+
+export const maintenanceNoticeRecipients = sqliteTable('maintenance_notice_recipients', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  noticeId: integer('notice_id').notNull().references(() => maintenanceNotices.id, { onDelete: 'cascade' }),
+  clientId: integer('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  channel: text('channel', { enum: ['whatsapp', 'sms'] }).notNull(),
+  outboxId: integer('outbox_id').notNull()
+});
+
 // Avisos de avaria aos clientes a jusante, um por incidente, cliente e tipo (migration 0107).
 export const incidentNotices = sqliteTable('incident_notices', {
   id: integer('id').primaryKey({ autoIncrement: true }),

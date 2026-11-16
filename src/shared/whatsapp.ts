@@ -12,6 +12,7 @@ export const fallbackWhatsappWarningTemplate = 'Caro cliente,\n\nA fatura {fatur
 export const fallbackWhatsappSuspensionTemplate = 'Caro cliente,\n\nA fatura {fatura} de {mes}, referente a {servico} ({valor}), está em atraso há {dias_atraso}. Sem regularização, o serviço de internet será suspenso a {data_suspensao}.\n{link}\n\nSe já pagou, ignore esta mensagem. Estamos disponíveis para ajudar.\n{empresa}';
 
 // Aviso de avaria (0107): só `{empresa}`, para o modelo da Meta ter um único campo.
+export const fallbackWhatsappMaintenanceTemplate = 'Caro cliente,\n\nNo dia {data}, entre as {inicio} e as {fim}, vamos fazer {motivo} na rede que serve a sua zona. O serviço de internet pode ficar interrompido durante esse período.\n\nPedimos desculpa pelo incómodo.\n{empresa}';
 export const fallbackWhatsappOutageTemplate = 'Caro cliente,\n\nDetetámos uma avaria na rede que está a afetar o seu serviço de internet. A nossa equipa já está a resolver e avisamos assim que estiver reposto.\n\nPedimos desculpa pelo incómodo.\n{empresa}';
 export const fallbackWhatsappRestoredTemplate = 'Caro cliente,\n\nA avaria na rede foi resolvida e o seu serviço de internet está reposto. Obrigado pela paciência.\n\nSe ainda tiver dificuldades, fale connosco.\n{empresa}';
 

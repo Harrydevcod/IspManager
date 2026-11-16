@@ -11,6 +11,7 @@ export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatu
 export const fallbackSmsPaymentReminderTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) vence a {vencimento}. Caso tenha pago, ignore. {empresa}';
 export const fallbackSmsPaymentWarningTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) continua por pagar ha {dias_atraso}. Pedimos que regularize. {empresa}';
 export const fallbackSmsGeneralTemplate = 'Caro cliente, fala a {empresa}. Entramos em contacto a proposito do seu servico de internet.';
+export const fallbackSmsMaintenanceTemplate = 'Caro cliente, a {data}, das {inicio} as {fim}, faremos {motivo} na rede da sua zona; a internet pode falhar. Desculpe. {empresa}';
 export const fallbackSmsOutageTemplate = 'Caro cliente, detetamos uma avaria na rede que afeta a sua internet. A equipa esta a resolver e avisamos quando voltar. Pedimos desculpa. {empresa}';
 export const fallbackSmsRestoredTemplate = 'Caro cliente, a avaria na rede foi resolvida e a sua internet esta reposta. Obrigado pela paciencia. {empresa}';
 

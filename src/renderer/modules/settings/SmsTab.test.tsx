@@ -23,7 +23,8 @@ const form = {
   smsPaymentWarningTemplate: '',
   smsOutageTemplate: '',
   smsRestoredTemplate: '',
-  smsGeneralTemplate: ''
+  smsGeneralTemplate: '',
+  smsMaintenanceTemplate: ''
 } as SettingsFormState;
 
 const smsStatus: SmsStatus = {

@@ -77,6 +77,8 @@ export type SettingsFormState = {
   smsOutageTemplate: string;
   smsRestoredTemplate: string;
   smsGeneralTemplate: string;
+  smsMaintenanceTemplate: string;
+  whatsappMaintenanceTemplate: string;
   networkProbeEnabled: boolean;
   networkProbeIntervalSeconds: string;
   networkProbeIncludeClients: boolean;

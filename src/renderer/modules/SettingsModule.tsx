@@ -9,6 +9,7 @@ import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
   fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappMaintenanceTemplate,
   fallbackWhatsappTestTemplate,
   fallbackWhatsappTemplate,
   normalizeWhatsappPhone,
@@ -26,6 +27,7 @@ import {
   fallbackSmsOutageTemplate,
   fallbackSmsRestoredTemplate,
   fallbackSmsGeneralTemplate,
+  fallbackSmsMaintenanceTemplate,
 } from '../../shared/sms';
 import { currentSmsReportMonth } from '../../shared/sms-report';
 import type { SmsMonthlyReport, SmsStatus } from '../types';
@@ -166,6 +168,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     smsOutageTemplate: fallbackSmsOutageTemplate,
     smsRestoredTemplate: fallbackSmsRestoredTemplate,
     smsGeneralTemplate: fallbackSmsGeneralTemplate,
+    smsMaintenanceTemplate: fallbackSmsMaintenanceTemplate,
+    whatsappMaintenanceTemplate: fallbackWhatsappMaintenanceTemplate,
     networkProbeEnabled: false,
     networkProbeIntervalSeconds: '60',
     networkProbeIncludeClients: false,

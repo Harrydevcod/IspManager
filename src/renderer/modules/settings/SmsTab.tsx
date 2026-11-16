@@ -14,6 +14,7 @@ import {
   fallbackSmsOutageTemplate,
   fallbackSmsRestoredTemplate,
   fallbackSmsGeneralTemplate,
+  fallbackSmsMaintenanceTemplate,
 } from '../../../shared/sms';
 import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 import { describeSmsPairing, describeSmsPresence, type SmsPairingSession } from './smsPresence';
@@ -283,6 +284,14 @@ export function SmsTab({
         label="SMS: mensagem geral"
         value={form.smsGeneralTemplate}
         recommended={fallbackSmsGeneralTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="smsMaintenanceTemplate"
+        label="SMS: aviso de manutenção"
+        hint="Variáveis: {data} {inicio} {fim} {motivo} {empresa}."
+        value={form.smsMaintenanceTemplate}
+        recommended={fallbackSmsMaintenanceTemplate}
         onUpdate={onUpdate}
       />
     </>

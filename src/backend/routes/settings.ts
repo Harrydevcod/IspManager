@@ -17,6 +17,7 @@ import {
   fallbackWhatsappReceiptTemplate,
   fallbackWhatsappReminderTemplate,
   fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappMaintenanceTemplate,
   fallbackWhatsappWarningTemplate,
   fallbackWhatsappTemplate,
   fallbackWhatsappTestTemplate
@@ -31,6 +32,7 @@ import {
   fallbackSmsOutageTemplate,
   fallbackSmsRestoredTemplate,
   fallbackSmsGeneralTemplate,
+  fallbackSmsMaintenanceTemplate,
 } from '../../shared/sms';
 
 const strictBoolean = (value: unknown) => {
@@ -157,6 +159,8 @@ const settingsSchema = z.object({
   smsOutageTemplate: z.string().trim().max(320).optional().nullable(),
   smsRestoredTemplate: z.string().trim().max(320).optional().nullable(),
   smsGeneralTemplate: z.string().trim().max(320).optional().nullable(),
+  smsMaintenanceTemplate: z.string().trim().max(320).optional().nullable(),
+  whatsappMaintenanceTemplate: z.string().trim().max(700).optional().nullable(),
   networkProbeEnabled: strictOptionalBoolean,
   networkProbeIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(60),
   networkProbeIncludeClients: strictOptionalBoolean,
@@ -296,6 +300,8 @@ const defaultSettings = {
   smsOutageTemplate: fallbackSmsOutageTemplate,
   smsRestoredTemplate: fallbackSmsRestoredTemplate,
   smsGeneralTemplate: fallbackSmsGeneralTemplate,
+  smsMaintenanceTemplate: fallbackSmsMaintenanceTemplate,
+  whatsappMaintenanceTemplate: fallbackWhatsappMaintenanceTemplate,
   networkProbeEnabled: false,
   networkProbeIntervalSeconds: 60,
   networkProbeIncludeClients: false,

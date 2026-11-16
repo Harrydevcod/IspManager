@@ -20,6 +20,7 @@ function markup(overrides: Partial<SettingsFormState>) {
     whatsappReminderTemplate: '',
     whatsappWarningTemplate: '',
     whatsappSuspensionTemplate: '',
+    whatsappMaintenanceTemplate: '',
     whatsappOutageTemplate: 'Texto de avaria',
     whatsappRestoredTemplate: 'Texto de reposição',
     ...overrides
