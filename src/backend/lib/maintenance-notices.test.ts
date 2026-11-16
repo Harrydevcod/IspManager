@@ -67,7 +67,7 @@ test('o envio grava o aviso e põe uma mensagem por cliente, com a janela no tex
   expect(result).toMatchObject({ total: 4, whatsapp: 2, sms: 0, skipped: 2 });
   const bodies = db.prepare('SELECT body FROM whatsapp_outbox').all() as Array<{ body: string }>;
   expect(bodies).toHaveLength(2);
-  expect(bodies[0].body).toContain('No dia 20-11-2026, entre as 09:00 e as 11:30, vamos fazer a calibração do equipamento');
+  expect(bodies[0].body).toContain('No dia 20 de novembro, entre as 09:00 e as 11:30, vamos fazer a calibração do equipamento');
   expect((db.prepare('SELECT COUNT(*) AS n FROM maintenance_notice_recipients').get() as { n: number }).n).toBe(2);
 });
 

@@ -3,7 +3,7 @@
  * serviços. Serve as mensagens (WhatsApp e SMS) e a área do cliente.
  */
 
-const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 /** `a`, `a e b`, `a, b e c`. */
 export function joinPt(items: string[]): string {

@@ -6,8 +6,7 @@ import { smsChannelActive } from './sms-notices';
 import { normalizeWhatsappPhone, resolveWhatsappProvider, whatsappChannelActive } from './whatsapp-provider';
 import { fallbackWhatsappMaintenanceTemplate, renderWhatsappTemplate } from '../../shared/whatsapp';
 import { fallbackSmsMaintenanceTemplate, normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
-import { formatPtDate } from '../../shared/date';
-import { toGsm7 } from '../../shared/message-describe';
+import { MONTHS, toGsm7 } from '../../shared/message-describe';
 
 export const MAINTENANCE_KINDS = ['manutencao', 'calibracao', 'configuracao'] as const;
 export type MaintenanceKind = (typeof MAINTENANCE_KINDS)[number];
@@ -19,6 +18,9 @@ const REASONS: Record<MaintenanceKind, string> = {
   configuracao: 'uma mudança de configuração'
 };
 
+/** "16 de novembro": o ano fica de fora, uma manutenção avisa-se com dias de antecedência. */
+const dayAndMonth = (day: string) => `${Number(day.slice(8, 10))} de ${MONTHS[Number(day.slice(5, 7)) - 1]}`;
+
 export type MaintenanceWindow = { kind: MaintenanceKind; day: string; start: string; end: string };
 
 function getSetting(db: Database.Database, key: string): string {
@@ -28,7 +30,7 @@ function getSetting(db: Database.Database, key: string): string {
 
 /** Os campos da janela primeiro (só este aviso os tem); depois os de sempre, como `{empresa}`. */
 function fill(template: string, window: MaintenanceWindow, gsm7: boolean): string {
-  const values: Record<string, string> = { data: formatPtDate(window.day), inicio: window.start, fim: window.end, motivo: REASONS[window.kind] };
+  const values: Record<string, string> = { data: dayAndMonth(window.day), inicio: window.start, fim: window.end, motivo: REASONS[window.kind] };
   return template.replace(/\{(data|inicio|fim|motivo)\}/g, (_token, key: string) => (gsm7 ? toGsm7(values[key]) : values[key]));
 }
 
