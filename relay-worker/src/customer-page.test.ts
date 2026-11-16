@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, expect, test, vi } from 'vitest';
 import { customerPage, customerScript } from './customer-page';
-import { createPortalCapability, encryptPortalSnapshot } from '../../src/backend/lib/customer-portal-crypto';
+import { createPortalCapability, createPortalSecret, derivePortalLink, encryptPortalSnapshot } from '../../src/backend/lib/customer-portal-crypto';
 
 afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 
@@ -9,7 +9,7 @@ afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 async function open(hash: string, response: Response) {
   document.body.innerHTML = new DOMParser().parseFromString(customerPage, 'text/html').body.innerHTML;
   location.hash = hash;
-  const fetch = vi.fn(async () => response);
+  const fetch = vi.fn(async (_input: string, _init?: RequestInit) => response);
   vi.stubGlobal('fetch', fetch);
   new Function(customerScript)();
   await vi.waitFor(() => expect(document.getElementById('intro')?.textContent).not.toBe('A carregar…'));
@@ -65,6 +65,18 @@ test('sem nada para liquidar não há bloco de pagamento, e um contacto inválid
   expect(document.getElementById('pay')?.hidden).toBe(true);
   expect(document.querySelectorAll('#contact a')).toHaveLength(0);
   expect(document.getElementById('contact')?.textContent).toBe('NovaTech');
+});
+
+test('link curto: do segredo de 22 caracteres saem o id do pedido e a chave', async () => {
+  const secret = createPortalSecret();
+  const { id, key } = derivePortalLink(secret);
+  const envelope = encryptPortalSnapshot(key, { customerName: 'Ana Lopes', customerCode: 'C001', generatedAt: '2026-11-16T12:00:00Z',
+    creditCents: 0, invoices: [], services: [] });
+  const fetch = await open(`#${secret}`, new Response(JSON.stringify({ envelope, expiresAt: Date.now() + 60_000 })));
+  await vi.waitFor(() => expect(document.getElementById('content')?.hidden).toBe(false));
+  expect(document.body.textContent).toContain('Ana Lopes');
+  expect(fetch.mock.calls[0][0]).toBe(`/customer/${id}/snapshot`);
+  for (const value of [secret, key]) expect(JSON.stringify(fetch.mock.calls)).not.toContain(value);
 });
 
 test('chave errada, link expirado e chave em falta não mostram dados', async () => {

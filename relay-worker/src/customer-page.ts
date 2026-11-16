@@ -15,14 +15,24 @@ export const customerScript = `(() => {
   const party = (title, name, lines) => { const d=el('div','party'); d.append(el('div','label',title), el('strong','',name)); for(const line of lines.filter(Boolean)) d.append(el('small','',line)); document.getElementById('parties').append(d); };
   const link = (href, value) => { const a=el('a','',value); a.href=href; return a; };
   async function run() {
-    const key = location.hash.slice(1);
-    if(!/^[A-Za-z0-9_-]{43}$/.test(key)) throw Error('O link está incompleto. Peça um novo link ao seu operador.');
-    const response=await fetch(location.pathname+'/snapshot',{cache:'no-store',referrerPolicy:'no-referrer'});
+    const fragment = location.hash.slice(1), utf8 = v => new TextEncoder().encode(v);
+    let snapshotPath, rawKey;
+    if(/^[A-Za-z0-9_-]{22}$/.test(fragment)) {
+      // Link curto (/c#segredo): o id e a chave saem do segredo, como no ISPM (customer-portal-crypto.ts).
+      const id=[...new Uint8Array(await crypto.subtle.digest('SHA-256',utf8('ispm-portal-id:'+fragment)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+      const ikm=await crypto.subtle.importKey('raw',decode(fragment),'HKDF',false,['deriveBits']);
+      rawKey=new Uint8Array(await crypto.subtle.deriveBits({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:utf8('ispm-portal-key')},ikm,256));
+      snapshotPath='/customer/'+id+'/snapshot';
+    } else if(/^[A-Za-z0-9_-]{43}$/.test(fragment)) {
+      // Links emitidos antes do link curto: id no caminho, chave no fragmento.
+      rawKey=decode(fragment); snapshotPath=location.pathname+'/snapshot';
+    } else throw Error('O link está incompleto. Peça um novo link ao seu operador.');
+    const response=await fetch(snapshotPath,{cache:'no-store',referrerPolicy:'no-referrer'});
     if(!response.ok) throw Error('Este link expirou ou já não está disponível. Peça um novo link ao seu operador.');
     const data=await response.json(); if(data.expiresAt<=Date.now()) throw Error('Este link expirou.');
     const e=data.envelope, cipher=decode(e.ciphertext), tag=decode(e.tag), input=new Uint8Array(cipher.length+tag.length); input.set(cipher); input.set(tag,cipher.length);
-    const cryptoKey=await crypto.subtle.importKey('raw',decode(key),'AES-GCM',false,['decrypt']);
-    const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(e.nonce),additionalData:new TextEncoder().encode('ispm-customer-portal:1'),tagLength:128},cryptoKey,input);
+    const cryptoKey=await crypto.subtle.importKey('raw',rawKey,'AES-GCM',false,['decrypt']);
+    const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(e.nonce),additionalData:utf8('ispm-customer-portal:1'),tagLength:128},cryptoKey,input);
     const snapshot=JSON.parse(new TextDecoder().decode(plain));
     const company=snapshot.company || {};
     // Instantâneos anteriores não traziam a empresa: mostra-se só o cliente, como antes.
