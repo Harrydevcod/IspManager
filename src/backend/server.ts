@@ -12,6 +12,7 @@ import { registerVaultRoutes } from './routes/vault';
 import { registerAuditRoutes } from './routes/audit';
 import { registerHealthRoutes } from './routes/health';
 import { registerClientRoutes } from './routes/clients';
+import { registerCustomerPortalRoutes } from './routes/customer-portal';
 import { registerUserRoutes } from './routes/users';
 import { registerDashboardRoutes } from './routes/dashboard';
 import { registerDocumentRoutes } from './routes/documents';
@@ -203,6 +204,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerDashboardRoutes(app);
   await registerCompanionRoutes(app);
   await registerClientRoutes(app);
+  await registerCustomerPortalRoutes(app);
   await registerPlanRoutes(app);
   await registerIptvRoutes(app);
   await registerProposalRoutes(app);

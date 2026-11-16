@@ -2,11 +2,14 @@
   "name": "ispm-sms-relay",
   "main": "src/index.ts",
   "compatibility_date": "2025-04-01",
-  "workers_dev": true,
+  // Só no domínio da empresa: o link do cliente fica curto e com a marca (c.novatech.cv/c#…).
+  // O telemóvel recebe o endereço novo pelo canal do pareamento (companion-sync.ts).
+  "workers_dev": false,
+  "routes": [{ "pattern": "c.novatech.cv", "custom_domain": true }],
   // Nada de registos: os pedidos levam identificadores de caixas e credenciais.
   "observability": { "enabled": false },
   "durable_objects": {
-    "bindings": [{ "name": "MAILBOX", "class_name": "Mailbox" }]
+    "bindings": [{ "name": "MAILBOX", "class_name": "Mailbox" }, { "name": "CUSTOMER_PORTAL", "class_name": "CustomerPortal" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }, { "tag": "v2", "new_sqlite_classes": ["CustomerPortal"] }]
 }
