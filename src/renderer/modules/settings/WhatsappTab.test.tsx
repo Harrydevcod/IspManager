@@ -20,6 +20,8 @@ function markup(overrides: Partial<SettingsFormState>) {
     whatsappReminderTemplate: '',
     whatsappWarningTemplate: '',
     whatsappSuspensionTemplate: '',
+    whatsappOutageTemplate: 'Texto de avaria',
+    whatsappRestoredTemplate: 'Texto de reposição',
     ...overrides
   } as SettingsFormState;
   return renderToStaticMarkup(
@@ -37,6 +39,11 @@ function markup(overrides: Partial<SettingsFormState>) {
 }
 
 describe('WhatsappTab', () => {
+  test('permite editar os textos de avaria e reposição', () => {
+    const html = markup({});
+    expect(html).toContain('Texto de avaria');
+    expect(html).toContain('Texto de reposição');
+  });
   test('com UltraMsg mostra só as credenciais do UltraMsg', () => {
     const html = markup({ whatsappProvider: 'ultramsg' });
     expect(html).toContain('UltraMsg instance ID');
@@ -49,7 +56,7 @@ describe('WhatsappTab', () => {
     const html = markup({ whatsappProvider: 'meta-cloud' });
     expect(html).toContain('Phone number ID');
     expect(html).toContain('Token de acesso Meta');
-    expect(html.match(/class="meta-template-field"/g)).toHaveLength(6);
+    expect(html.match(/class="meta-template-field"/g)).toHaveLength(8);
     // Sem ID da conta e token, a consulta dos modelos não se pode fazer.
     expect(html).toMatch(/<button[^>]*disabled[^>]*title="Guarde o ID da conta e o token primeiro"/);
     expect(html).not.toContain('UltraMsg instance ID');

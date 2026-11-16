@@ -3,9 +3,11 @@ import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { TemplateField } from './TemplateField';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOutageTemplate,
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
   fallbackWhatsappReminderTemplate,
+  fallbackWhatsappRestoredTemplate,
   fallbackWhatsappSuspensionTemplate,
   fallbackWhatsappTemplate,
   fallbackWhatsappWarningTemplate,
@@ -132,11 +134,13 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         ['metaTemplateReminder', 'Lembrete antes do vencimento'],
         ['metaTemplateOverdue', 'Fatura em atraso'],
         ['metaTemplateWarning', 'Aviso de atraso prolongado'],
-        ['metaTemplateSuspension', 'Aviso de suspensão']
+        ['metaTemplateSuspension', 'Aviso de suspensão'],
+        ['metaTemplateOutage', 'Avaria na rede'],
+        ['metaTemplateRestored', 'Serviço reposto']
       ] as const).map(([field, label]) => {
         const selected = form[field] || '';
         const chosen = models.find((model) => `${model.name}|${model.language}` === selected);
-        const text = field === 'metaTemplateOverdue' ? form.whatsappOverdueTemplate : field === 'metaTemplateSuspension' ? form.whatsappSuspensionTemplate : field === 'metaTemplateInvoice' ? form.whatsappInvoiceReadyTemplate : field === 'metaTemplateReceipt' ? form.whatsappReceiptTemplate : field === 'metaTemplateReminder' ? form.whatsappReminderTemplate : form.whatsappWarningTemplate;
+        const text = field === 'metaTemplateOutage' ? form.whatsappOutageTemplate : field === 'metaTemplateRestored' ? form.whatsappRestoredTemplate : field === 'metaTemplateOverdue' ? form.whatsappOverdueTemplate : field === 'metaTemplateSuspension' ? form.whatsappSuspensionTemplate : field === 'metaTemplateInvoice' ? form.whatsappInvoiceReadyTemplate : field === 'metaTemplateReceipt' ? form.whatsappReceiptTemplate : field === 'metaTemplateReminder' ? form.whatsappReminderTemplate : form.whatsappWarningTemplate;
         const sourceFields = text?.match(/\{[a-z_]+\}/gi)?.length ?? 0;
         const modelSlots = chosen ? Array.from(chosen.body.matchAll(/\{\{([^{}]+)\}\}/g), (match) => match[1]) : [];
         const modelFields = modelSlots.length;
@@ -238,6 +242,8 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         recommended={fallbackWhatsappSuspensionTemplate}
         onUpdate={onUpdate}
       />
+      <TemplateField field="whatsappOutageTemplate" label="Aviso de avaria" value={form.whatsappOutageTemplate} recommended={fallbackWhatsappOutageTemplate} onUpdate={onUpdate} />
+      <TemplateField field="whatsappRestoredTemplate" label="Serviço reposto" value={form.whatsappRestoredTemplate} recommended={fallbackWhatsappRestoredTemplate} onUpdate={onUpdate} />
     </>
   );
 }

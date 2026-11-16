@@ -121,6 +121,16 @@ describe('enqueueWhatsapp + runWhatsappOutboxIfDue', () => {
     expect(statusOf(id)).toBe('failed');
   });
 
+  test('uma falha de envio em curso não reativa uma mensagem cancelada', async () => {
+    const id = outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'avaria', maxAttempts: 1 });
+    const deps = depsWith({ sendText: async () => {
+      db.prepare("UPDATE whatsapp_outbox SET status = 'cancelled' WHERE id = ?").run(id);
+      return { ok: false, reason: 'net' };
+    } });
+    await outbox.runWhatsappOutboxIfDue(new Date(), deps);
+    expect(statusOf(id)).toBe('cancelled');
+  });
+
   test('a document row regenerates the PDF and hands it to the provider', async () => {
     const captured: Array<{ document: Buffer; filename: string; caption: string }> = [];
     const sendDocument: WhatsappProvider['sendDocument'] = async (message) => {

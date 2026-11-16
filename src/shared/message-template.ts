@@ -7,6 +7,7 @@ export type MessageTemplateData = {
   fullName: string;
   clientCode: string | null;
   phone?: string | null;
+  zone?: string | null;
   amountCve?: number;
   dueDate?: string | null;
   referenceMonth?: string | null;
@@ -54,6 +55,7 @@ export function renderMessageTemplate(template: string, data: MessageTemplateDat
     cliente: data.fullName || '-',
     codigo: data.clientCode || '-',
     telefone: data.phone || '',
+    zona: data.zone || '-',
     empresa: companyName || 'ISPM',
     valor: data.amountCve == null ? '-' : formatEscudos(data.amountCve),
     vencimento: formatPtDate(data.dueDate),

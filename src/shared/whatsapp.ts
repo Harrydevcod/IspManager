@@ -11,10 +11,15 @@ export const fallbackWhatsappOverdueTemplate = 'Caro cliente,\n\nAinda não regi
 export const fallbackWhatsappWarningTemplate = 'Caro cliente,\n\nA fatura {fatura} de {mes} ({valor}) continua por regularizar há {dias_atraso}. Para manter o seu serviço sem interrupções, pedimos que efetue o pagamento com a maior brevidade.\n{link}\n\nSe precisar de combinar outra forma de pagamento, fale connosco.\n{empresa}';
 export const fallbackWhatsappSuspensionTemplate = 'Caro cliente,\n\nA fatura {fatura} ({valor}) está em atraso há {dias_atraso}. Sem regularização, o serviço de internet será suspenso a {data_suspensao}.\n{link}\n\nSe já pagou, ignore esta mensagem. Estamos disponíveis para ajudar.\n{empresa}';
 
+// Aviso de avaria (0107): só `{empresa}`, para o modelo da Meta ter um único campo.
+export const fallbackWhatsappOutageTemplate = 'Caro cliente,\n\nDetetámos uma avaria na rede que está a afetar o seu serviço de internet. A nossa equipa já está a resolver e avisamos assim que estiver reposto.\n\nPedimos desculpa pelo incómodo.\n{empresa}';
+export const fallbackWhatsappRestoredTemplate = 'Caro cliente,\n\nA avaria na rede foi resolvida e o seu serviço de internet está reposto. Obrigado pela paciência.\n\nSe ainda tiver dificuldades, fale connosco.\n{empresa}';
+
 export type WhatsappTemplateData = {
   fullName: string;
   clientCode: string;
   phone?: string | null;
+  zone?: string | null;
   amountCve?: number;
   dueDate?: string;
   referenceMonth?: string;

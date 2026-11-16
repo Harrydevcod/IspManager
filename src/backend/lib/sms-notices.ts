@@ -7,7 +7,9 @@ import { autoSuspensionGraceDays } from './auto-suspension';
 import { whatsappChannelActive } from './whatsapp-provider';
 import {
   fallbackSmsInvoiceIssuedTemplate,
+  fallbackSmsOutageTemplate,
   fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsRestoredTemplate,
   fallbackSmsReceiptConfirmedTemplate,
   fallbackSmsSuspensionNoticeTemplate,
   normalizeSmsPhone,
@@ -193,7 +195,8 @@ export function enqueueSmsFallbackForWhatsapp(outboxId: number, now: Date = new 
     const notice = db.prepare(`
       SELECT payment_id AS paymentId, notice_type AS stage FROM whatsapp_notices WHERE outbox_id = ? LIMIT 1
     `).get(outboxId) as { paymentId: number; stage: NoticeType } | undefined;
-    if (!notice || !smsChannelActive(db)) return false;
+    if (!notice) return enqueueOutageSmsFallback(db, outboxId);
+    if (!smsChannelActive(db)) return false;
     const funnel = loadFunnel();
     const row = loadOverdueCandidates(Math.max(0, -funnel[0].threshold)).find((c) => c.paymentId === notice.paymentId);
     if (!row) return false;
@@ -201,4 +204,25 @@ export function enqueueSmsFallbackForWhatsapp(outboxId: number, now: Date = new 
   } catch {
     return false;
   }
+}
+
+/** Texto do SMS de um aviso de avaria (0107). */
+export function outageSmsBody(kind: 'outage' | 'restored'): string {
+  return renderSmsTemplate(kind === 'outage' ? fallbackSmsOutageTemplate : fallbackSmsRestoredTemplate,
+    { fullName: '', clientCode: null }, getSetting('companyName') || 'ISPM');
+}
+
+/** O mesmo recurso para um aviso de avaria: o aviso passa a apontar para o SMS, para não se repetir. */
+function enqueueOutageSmsFallback(db: Database.Database, outboxId: number): boolean {
+  const row = db.prepare(`
+    SELECT n.id, n.client_id AS clientId, n.kind, c.phone FROM incident_notices n JOIN clients c ON c.id = n.client_id
+    WHERE n.channel = 'whatsapp' AND n.outbox_id = ?
+  `).get(outboxId) as { id: number; clientId: number; kind: 'outage' | 'restored'; phone: string | null } | undefined;
+  const toPhone = normalizeSmsPhone(row?.phone || '');
+  if (!row || !toPhone || !smsChannelActive(db)) return false;
+  db.transaction(() => {
+    const smsId = enqueueSmsNotification({ clientId: row.clientId, eventType: 'outage_notice', toPhone, body: outageSmsBody(row.kind) });
+    db.prepare("UPDATE incident_notices SET channel = 'sms', outbox_id = ? WHERE id = ?").run(smsId, row.id);
+  })();
+  return true;
 }

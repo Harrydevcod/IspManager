@@ -183,6 +183,20 @@ export function NetworkTab({
             checked={form.networkProbeIncludeClients}
             onChange={(event) => onToggle('networkProbeIncludeClients', event.target.checked)}
           />
+          <Toggle
+            title="Avisar os clientes de uma avaria"
+            checked={form.outageNoticesEnabled}
+            onChange={(event) => onToggle('outageNoticesEnabled', event.target.checked)}
+          />
+          <Field
+            label="Minutos em baixo antes de avisar"
+            type="number"
+            min={1}
+            max={240}
+            disabled={!form.outageNoticesEnabled}
+            value={form.outageNoticeDelayMinutes}
+            onChange={(event) => onUpdate('outageNoticeDelayMinutes', event.target.value)}
+          />
         </>
       )}
       <div className="settings-test-whatsapp" aria-label="Teste da sonda de rede">

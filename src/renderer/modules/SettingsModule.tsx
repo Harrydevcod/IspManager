@@ -15,7 +15,7 @@ import {
   renderWhatsappMessage,
   sendWhatsapp
 } from '../lib/whatsapp';
-import { fallbackWhatsappReminderTemplate, fallbackWhatsappWarningTemplate } from '../../shared/whatsapp';
+import { fallbackWhatsappReminderTemplate, fallbackWhatsappWarningTemplate, fallbackWhatsappOutageTemplate, fallbackWhatsappRestoredTemplate } from '../../shared/whatsapp';
 import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
@@ -126,6 +126,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     whatsappReminderTemplate: fallbackWhatsappReminderTemplate,
     whatsappWarningTemplate: fallbackWhatsappWarningTemplate,
     whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
+    whatsappOutageTemplate: fallbackWhatsappOutageTemplate,
+    whatsappRestoredTemplate: fallbackWhatsappRestoredTemplate,
     whatsappChannelEnabled: true,
     autoNoticesEnabled: false,
     noticeCooldownDays: '7',
@@ -140,6 +142,10 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     metaTemplateSuspension: '',
     metaTemplateInvoice: '',
     metaTemplateReceipt: '',
+    metaTemplateOutage: '',
+    metaTemplateRestored: '',
+    outageNoticesEnabled: false,
+    outageNoticeDelayMinutes: '10',
     metaAccessToken: '',
     smsCompanionEnabled: false,
     smsAutoNoticesEnabled: false,
@@ -449,6 +455,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           installationFeeCve: String(settings.installationFeeCve),
           ivaRate: String(settings.ivaRate),
           noticeCooldownDays: String(settings.noticeCooldownDays),
+          outageNoticeDelayMinutes: String(settings.outageNoticeDelayMinutes),
           smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: String(settings.networkProbeIntervalSeconds),
@@ -599,6 +606,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           installationFeeCve: Number(savedForm.installationFeeCve),
           ivaRate: Number(savedForm.ivaRate),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),
+          outageNoticeDelayMinutes: Number(savedForm.outageNoticeDelayMinutes),
           smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: Number(savedForm.networkProbeIntervalSeconds),

@@ -4,6 +4,7 @@ import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { renderPaymentDocumentPdf } from './documents';
 import { enqueueSmsFallbackForWhatsapp } from './sms-notices';
 import { z } from 'zod';
+import { outageDispatchAllowed } from './outage-notice-policy';
 import {
   configuredWhatsappProviderLabel,
   resolveWhatsappProvider,
@@ -132,21 +133,25 @@ async function drainOutbox(
     FROM whatsapp_outbox
     WHERE status = 'pending'
       AND (next_attempt_at IS NULL OR next_attempt_at <= @nowIso)
+      AND (@outageAllowed = 1 OR NOT EXISTS (SELECT 1 FROM incident_notices n WHERE n.channel = 'whatsapp' AND n.outbox_id = whatsapp_outbox.id))
       ${opts.onlyId ? 'AND id = @onlyId' : ''}
     ORDER BY id ASC
     LIMIT @batchSize
-  `).all({ nowIso, batchSize: opts.batchSize ?? 20, onlyId: opts.onlyId ?? 0 }) as OutboxRow[];
+  `).all({ nowIso, outageAllowed: outageDispatchAllowed(db, now) ? 1 : 0, batchSize: opts.batchSize ?? 20, onlyId: opts.onlyId ?? 0 }) as OutboxRow[];
 
   // O `provider_message_id` só faz sentido junto de quem o emitiu.
   const markSent = db.prepare(`UPDATE whatsapp_outbox SET status='sent', provider=?, provider_message_id=?, attempts=attempts+1, last_error=NULL, next_attempt_at=NULL, updated_at=datetime('now') WHERE id=?`);
-  const markRetry = db.prepare(`UPDATE whatsapp_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?`);
-  const markFailedStmt = db.prepare(`UPDATE whatsapp_outbox SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=?`);
+  const markRetry = db.prepare(`UPDATE whatsapp_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='pending'`);
+  const markFailedStmt = db.prepare(`UPDATE whatsapp_outbox SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=? AND status='pending'`);
   // Falha definitiva de um aviso de cobrança: o SMS equivalente entra já, não no dia seguinte.
-  const markFailed = { run: (error: string, id: number) => { markFailedStmt.run(error, id); enqueueSmsFallbackForWhatsapp(id); } };
+  const markFailed = { run: (error: string, id: number) => { if (markFailedStmt.run(error, id).changes > 0) enqueueSmsFallbackForWhatsapp(id); } };
 
   let sent = 0, failed = 0, retried = 0;
 
   for (const row of rows) {
+    // A linha pode ter sido cancelada enquanto uma mensagem anterior aguardava o fornecedor.
+    const current = db.prepare('SELECT status FROM whatsapp_outbox WHERE id = ?').get(row.id) as { status: string } | undefined;
+    if (current?.status !== 'pending') continue;
     let result: WhatsappSendResult;
     try {
       if (row.kind === 'document') {

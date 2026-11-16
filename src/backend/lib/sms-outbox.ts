@@ -6,6 +6,7 @@ import { readSecret } from './secrets';
 import { createSmsSignature, verifyResponseSignature } from './sms-signing';
 import { relayConfig, relayFetch } from './sms-relay';
 import type { SmsEventType } from '../../shared/sms';
+import { outageDispatchAllowed } from './outage-notice-policy';
 
 const DEFAULT_COMPANION_PORT = 8765;
 
@@ -15,7 +16,7 @@ export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: f
 export type SmsStatusResult = { status: SmsOutboxStatus; error?: string; deliveredAt?: string | null };
 
 export type SmsOutboxDeps = {
-  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice'; clientName: string | null }) => Promise<SmsDispatchResult>;
+  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice'; clientName: string | null }) => Promise<SmsDispatchResult>;
   fetchStatus: (androidRequestId: string) => Promise<SmsStatusResult>;
 };
 
@@ -23,7 +24,7 @@ export type EnqueueSmsInput = {
   clientId?: number | null;
   paymentId?: number | null;
   serviceId?: number | null;
-  eventType: SmsEventType | 'test' | 'fup_notice';
+  eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice';
   toPhone: string;
   body: string;
 };
@@ -279,7 +280,7 @@ export async function selfHealCompanionAddress(): Promise<void> {
   }
 }
 
-async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice'; clientName: string | null }): Promise<SmsDispatchResult> {
+async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice'; clientName: string | null }): Promise<SmsDispatchResult> {
   try {
     const response = await signedFetch('/requests', 'POST', entry);
     const json = await readJson(response);
@@ -339,11 +340,12 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     FROM sms_outbox s
     LEFT JOIN clients c ON c.id = s.client_id
     WHERE s.status='pending_dispatch' AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= ?)
+      AND (s.event_type <> 'outage_notice' OR ? = 1)
     ORDER BY s.id ASC LIMIT 20
-  `).all(nowIso) as Array<{
+  `).all(nowIso, outageDispatchAllowed(db, now) ? 1 : 0) as Array<{
     id: number;
     androidRequestId: string | null;
-    eventType: SmsEventType | 'test' | 'fup_notice';
+    eventType: SmsEventType | 'test' | 'fup_notice' | 'outage_notice';
     toPhone: string;
     body: string;
     attempts: number;
@@ -365,7 +367,13 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     // Persist before the network call: the phone may accept it even when the
     // response is lost. Reusing the ID lets its request store deduplicate retries.
     const requestId = row.androidRequestId ?? randomUUID();
-    if (!row.androidRequestId) db.prepare('UPDATE sms_outbox SET android_request_id=? WHERE id=? AND android_request_id IS NULL').run(requestId, row.id);
+    if (!row.androidRequestId) {
+      const claim = db.prepare("UPDATE sms_outbox SET android_request_id=? WHERE id=? AND android_request_id IS NULL AND status='pending_dispatch'").run(requestId, row.id);
+      if (claim.changes === 0) continue;
+    } else {
+      const current = db.prepare('SELECT status FROM sms_outbox WHERE id = ?').get(row.id) as { status: string } | undefined;
+      if (current?.status !== 'pending_dispatch') continue;
+    }
     const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType, clientName: row.clientName });
     if (result.ok) {
       db.prepare(`

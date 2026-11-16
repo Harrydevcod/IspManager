@@ -45,6 +45,12 @@ export function businessHour(at: Date | number = new Date()): number {
 /** Os avisos automáticos ao cliente só saem a partir desta hora de Cabo Verde, nunca de madrugada. */
 export const NOTICE_SEND_FROM_HOUR = 8;
 
+/** Janela dos avisos de avaria, em Cabo Verde. */
+export function outageNoticeSendingAllowed(at: Date | number = new Date()): boolean {
+  const hour = businessHour(at);
+  return hour >= 7 && hour < 22;
+}
+
 /**
  * O dia do corte automático: o job suspende quando `vencimento + tolerância < hoje`, ou seja, a
  * partir de vencimento + tolerância + 1. Um corte já vencido (o router adiou) é hoje, nunca uma
