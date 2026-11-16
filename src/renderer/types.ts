@@ -312,7 +312,7 @@ export type ClientFinance = {
   plans: PaymentPlan[];
 };
 
-export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
+export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_reminder' | 'payment_overdue' | 'payment_warning' | 'suspension_notice';
 
 export type SmsStatus = {
   /** Interruptor geral: desligada, o desktop não contacta o telemóvel. */

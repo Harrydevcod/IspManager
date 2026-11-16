@@ -123,7 +123,11 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
     history = listOf(
       req("h1", "Ana Lopes", "receipt_confirmed", status = "sent"),
       req("h2", "Rui Monteiro", "payment_overdue", status = "failed"),
-      req("h3", null, "invoice_issued", status = "rejected")
+      req("h3", null, "invoice_issued", status = "rejected"),
+      req("h4", "Marta Silva", "payment_reminder", status = "sent"),
+      req("h5", "Joao Mendes", "outage_notice", status = "sent"),
+      req("h6", "Joao Mendes", "outage_restored", status = "sent"),
+      req("h7", "Carla Pires", "maintenance_notice", status = "sent")
     )
   )
 

@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
+import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Smartphone, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, ColumnPicker, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
@@ -319,6 +319,20 @@ export function ClientsModule({
     }
   }
 
+  /** A mensagem geral por SMS: o backend usa o modelo do SMS e põe-na na fila do telemóvel. */
+  async function sendClientSms(client: Client) {
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/clients/${client.id}/sms-general`, { method: 'POST' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || 'Nao foi possivel enviar SMS');
+      }
+      toast('SMS na fila de envio.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Nao foi possivel enviar SMS', 'error');
+    }
+  }
+
   async function createClient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -591,6 +605,15 @@ export function ClientsModule({
                 onClick={() => void sendClientWhatsapp(selectedClient)}
               >
                 WhatsApp
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!normalizeWhatsappPhone(selectedClient.phone)}
+                leadingIcon={<Smartphone size={16} aria-hidden />}
+                onClick={() => void sendClientSms(selectedClient)}
+              >
+                SMS
               </Button>
               <Button
                 variant="secondary"

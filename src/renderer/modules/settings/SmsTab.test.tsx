@@ -18,7 +18,12 @@ const form = {
   smsInvoiceIssuedTemplate: '',
   smsReceiptConfirmedTemplate: '',
   smsPaymentOverdueTemplate: '',
-  smsSuspensionNoticeTemplate: ''
+  smsSuspensionNoticeTemplate: '',
+  smsPaymentReminderTemplate: '',
+  smsPaymentWarningTemplate: '',
+  smsOutageTemplate: '',
+  smsRestoredTemplate: '',
+  smsGeneralTemplate: ''
 } as SettingsFormState;
 
 const smsStatus: SmsStatus = {

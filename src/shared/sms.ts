@@ -1,6 +1,6 @@
 import { renderMessageTemplate } from './message-template';
 
-export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
+export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_reminder' | 'payment_overdue' | 'payment_warning' | 'suspension_notice';
 
 // GSM-7 de propósito: sem á/ã/ç/õ cada aviso cabe em 1 SMS (160 caracteres);
 // com eles passa a UCS-2 (70 por parte). Por isso "Caso tenha pago" e não "Se já pagou".
@@ -8,6 +8,9 @@ export const fallbackSmsInvoiceIssuedTemplate = 'Caro cliente, a fatura {fatura}
 export const fallbackSmsReceiptConfirmedTemplate = 'Caro cliente, confirmamos o pagamento de {valor} de {servico}, {mes}. Recibo {recibo}. Muito obrigado, {empresa}';
 export const fallbackSmsPaymentOverdueTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) venceu a {vencimento}. Caso tenha pago, ignore. {empresa}';
 export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatura} ({servico}, {mes}, {valor}) esta por pagar. A internet pode ser suspensa a {data_suspensao}. {empresa}';
+export const fallbackSmsPaymentReminderTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) vence a {vencimento}. Caso tenha pago, ignore. {empresa}';
+export const fallbackSmsPaymentWarningTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) continua por pagar ha {dias_atraso}. Pedimos que regularize. {empresa}';
+export const fallbackSmsGeneralTemplate = 'Caro cliente, fala a {empresa}. Entramos em contacto a proposito do seu servico de internet.';
 export const fallbackSmsOutageTemplate = 'Caro cliente, detetamos uma avaria na rede que afeta a sua internet. A equipa esta a resolver e avisamos quando voltar. Pedimos desculpa. {empresa}';
 export const fallbackSmsRestoredTemplate = 'Caro cliente, a avaria na rede foi resolvida e a sua internet esta reposta. Obrigado pela paciencia. {empresa}';
 

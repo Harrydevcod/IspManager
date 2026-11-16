@@ -25,7 +25,12 @@ import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
   fallbackSmsReceiptConfirmedTemplate,
-  fallbackSmsSuspensionNoticeTemplate
+  fallbackSmsSuspensionNoticeTemplate,
+  fallbackSmsPaymentReminderTemplate,
+  fallbackSmsPaymentWarningTemplate,
+  fallbackSmsOutageTemplate,
+  fallbackSmsRestoredTemplate,
+  fallbackSmsGeneralTemplate,
 } from '../../shared/sms';
 
 const strictBoolean = (value: unknown) => {
@@ -147,6 +152,11 @@ const settingsSchema = z.object({
   smsReceiptConfirmedTemplate: z.string().trim().max(320).optional().nullable(),
   smsPaymentOverdueTemplate: z.string().trim().max(320).optional().nullable(),
   smsSuspensionNoticeTemplate: z.string().trim().max(320).optional().nullable(),
+  smsPaymentReminderTemplate: z.string().trim().max(320).optional().nullable(),
+  smsPaymentWarningTemplate: z.string().trim().max(320).optional().nullable(),
+  smsOutageTemplate: z.string().trim().max(320).optional().nullable(),
+  smsRestoredTemplate: z.string().trim().max(320).optional().nullable(),
+  smsGeneralTemplate: z.string().trim().max(320).optional().nullable(),
   networkProbeEnabled: strictOptionalBoolean,
   networkProbeIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(60),
   networkProbeIncludeClients: strictOptionalBoolean,
@@ -281,6 +291,11 @@ const defaultSettings = {
   smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
   smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
   smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate,
+  smsPaymentReminderTemplate: fallbackSmsPaymentReminderTemplate,
+  smsPaymentWarningTemplate: fallbackSmsPaymentWarningTemplate,
+  smsOutageTemplate: fallbackSmsOutageTemplate,
+  smsRestoredTemplate: fallbackSmsRestoredTemplate,
+  smsGeneralTemplate: fallbackSmsGeneralTemplate,
   networkProbeEnabled: false,
   networkProbeIntervalSeconds: 60,
   networkProbeIncludeClients: false,

@@ -9,6 +9,8 @@ import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsOutageTemplate,
   fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsPaymentReminderTemplate,
+  fallbackSmsPaymentWarningTemplate,
   fallbackSmsRestoredTemplate,
   fallbackSmsReceiptConfirmedTemplate,
   fallbackSmsSuspensionNoticeTemplate,
@@ -55,19 +57,20 @@ export function smsTemplateFor(eventType: SmsEventType): string {
   const keys: Record<SmsEventType, [string, string]> = {
     invoice_issued: ['smsInvoiceIssuedTemplate', fallbackSmsInvoiceIssuedTemplate],
     receipt_confirmed: ['smsReceiptConfirmedTemplate', fallbackSmsReceiptConfirmedTemplate],
+    payment_reminder: ['smsPaymentReminderTemplate', fallbackSmsPaymentReminderTemplate],
     payment_overdue: ['smsPaymentOverdueTemplate', fallbackSmsPaymentOverdueTemplate],
+    payment_warning: ['smsPaymentWarningTemplate', fallbackSmsPaymentWarningTemplate],
     suspension_notice: ['smsSuspensionNoticeTemplate', fallbackSmsSuspensionNoticeTemplate]
   };
   const [key, fallback] = keys[eventType];
   return getSetting(key) || fallback;
 }
 
-/**
- * Etapa do funil → modelo de SMS. O lembrete antes do vencimento fica de fora:
- * não há modelo para ele e cada SMS gasta saldo do SIM.
- */
+/** Etapa do funil → modelo de SMS: cada etapa do WhatsApp tem o seu SMS. */
 export function smsEventForStage(stage: NoticeType): SmsEventType | null {
-  if (stage === 'overdue' || stage === 'warning') return 'payment_overdue';
+  if (stage === 'reminder') return 'payment_reminder';
+  if (stage === 'overdue') return 'payment_overdue';
+  if (stage === 'warning') return 'payment_warning';
   if (stage === 'suspension') return 'suspension_notice';
   return null;
 }
@@ -210,8 +213,15 @@ export function enqueueSmsFallbackForWhatsapp(outboxId: number, now: Date = new 
 
 /** Texto do SMS de um aviso de avaria (0107). */
 export function outageSmsBody(kind: 'outage' | 'restored'): string {
-  return renderSmsTemplate(kind === 'outage' ? fallbackSmsOutageTemplate : fallbackSmsRestoredTemplate,
-    { fullName: '', clientCode: null }, getSetting('companyName') || 'ISPM');
+  const template = kind === 'outage'
+    ? getSetting('smsOutageTemplate') || fallbackSmsOutageTemplate
+    : getSetting('smsRestoredTemplate') || fallbackSmsRestoredTemplate;
+  return renderSmsTemplate(template, { fullName: '', clientCode: null }, getSetting('companyName') || 'ISPM');
+}
+
+/** O tipo do SMS de um aviso de avaria: o reposto tem o seu, para o telemóvel o mostrar como tal. */
+export function outageSmsEvent(kind: 'outage' | 'restored'): 'outage_notice' | 'outage_restored' {
+  return kind === 'outage' ? 'outage_notice' : 'outage_restored';
 }
 
 /** O mesmo recurso para um aviso de avaria: o aviso passa a apontar para o SMS, para não se repetir. */
@@ -223,7 +233,7 @@ function enqueueOutageSmsFallback(db: Database.Database, outboxId: number): bool
   const toPhone = normalizeSmsPhone(row?.phone || '');
   if (!row || !toPhone || !smsChannelActive(db)) return false;
   db.transaction(() => {
-    const smsId = enqueueSmsNotification({ clientId: row.clientId, eventType: 'outage_notice', toPhone, body: outageSmsBody(row.kind) });
+    const smsId = enqueueSmsNotification({ clientId: row.clientId, eventType: outageSmsEvent(row.kind), toPhone, body: outageSmsBody(row.kind) });
     db.prepare("UPDATE incident_notices SET channel = 'sms', outbox_id = ? WHERE id = ?").run(smsId, row.id);
   })();
   return true;

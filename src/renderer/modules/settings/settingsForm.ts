@@ -72,6 +72,11 @@ export type SettingsFormState = {
   smsReceiptConfirmedTemplate: string;
   smsPaymentOverdueTemplate: string;
   smsSuspensionNoticeTemplate: string;
+  smsPaymentReminderTemplate: string;
+  smsPaymentWarningTemplate: string;
+  smsOutageTemplate: string;
+  smsRestoredTemplate: string;
+  smsGeneralTemplate: string;
   networkProbeEnabled: boolean;
   networkProbeIntervalSeconds: string;
   networkProbeIncludeClients: boolean;

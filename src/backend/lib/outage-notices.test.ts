@@ -382,3 +382,19 @@ describe('recurso SMS de um aviso de avaria', () => {
     }
   });
 });
+
+test('por SMS, o reposto tem o seu tipo e o texto editável das Definições', async () => {
+  setSetting('outageNoticesEnabled', 'true');
+  setSetting('whatsappChannelEnabled', 'false');
+  setSetting('smsRestoredTemplate', 'Ja temos rede. {empresa}');
+  enableSms();
+  const antena = openOutage(20);
+  await runOutageNoticesIfDue(NOW);
+  db.prepare("UPDATE sms_outbox SET status = 'sent'").run();
+  event(antena, 'up', minutesAgo(1));
+  backUp(antena);
+  expect(await runOutageNoticesIfDue(NOW)).toMatchObject({ restored: 3 });
+  const rows = db.prepare("SELECT body FROM sms_outbox WHERE event_type = 'outage_restored'").all() as Array<{ body: string }>;
+  expect(rows).toHaveLength(3);
+  expect(rows[0].body).toBe('Ja temos rede. ISPM');
+});
