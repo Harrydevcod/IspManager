@@ -6878,6 +6878,39 @@ button.danger:disabled {
   color: var(--text);
 }
 
+/* Área do cliente: link novo + links ativos (0108). */
+.customer-portal-new {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.customer-portal-new input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r1);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 13px/1.4 ui-monospace, monospace;
+  text-overflow: ellipsis;
+}
+.customer-portal-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.customer-portal-links li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.customer-portal-until { flex: 1; }
+
 /* Client profitability panel (Fase 2). */
 .client-profitability {
   margin-top: var(--space-4);

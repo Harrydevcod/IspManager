@@ -110,6 +110,16 @@ export const appSettings = sqliteTable('app_settings', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+export const customerPortalLinks = sqliteTable('customer_portal_links', {
+  id: text('id').primaryKey(),
+  clientId: integer('client_id').notNull().references(() => clients.id),
+  relayOrigin: text('relay_origin').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  publishedAt: text('published_at'),
+  revokedAt: text('revoked_at'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 export const auditLogs = sqliteTable('audit_logs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   actorUserId: integer('actor_user_id'),

@@ -6,7 +6,7 @@
   // Nada de registos: os pedidos levam identificadores de caixas e credenciais.
   "observability": { "enabled": false },
   "durable_objects": {
-    "bindings": [{ "name": "MAILBOX", "class_name": "Mailbox" }]
+    "bindings": [{ "name": "MAILBOX", "class_name": "Mailbox" }, { "name": "CUSTOMER_PORTAL", "class_name": "CustomerPortal" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }, { "tag": "v2", "new_sqlite_classes": ["CustomerPortal"] }]
 }

@@ -6,6 +6,7 @@ import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { NewTicketDialog } from './support/NewTicketDialog';
 import { SmsInbox } from './settings/SmsInbox';
+import { CustomerPortal } from './clients/CustomerPortal';
 import { authFetch, useAuth } from '../lib/auth';
 import { useColumnVisibility } from '../lib/columnVisibility';
 import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
@@ -640,6 +641,8 @@ export function ClientsModule({
           {fupUsage.filter((row) => row.clientId === selectedClient.id).map((row) => (
             <FupUsageSection key={row.serviceId} serviceId={row.serviceId} />
           ))}
+
+          {(auth.isAuthBypassed || auth.hasRole('admin')) && !selectedClient.systemKind && <CustomerPortal key={selectedClient.id} clientId={selectedClient.id} />}
 
           <section className="client-profitability">
             <header>
