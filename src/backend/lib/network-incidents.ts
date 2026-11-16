@@ -45,6 +45,35 @@ export function downstreamClosure(root: number, uplinks: Map<number, number[]>):
   return closure;
 }
 
+/** Os clientes com serviço ativo pendurados diretamente num equipamento do backbone. */
+const CLIENTS_OF_DEVICE_SQL = `
+  SELECT DISTINCT c.id AS clientId, c.client_code AS clientCode, c.full_name AS clientName, c.zone
+  FROM backbone_assignment_links bal
+  JOIN service_device_assignments a ON a.id = bal.assignment_id AND a.end_date IS NULL
+  JOIN assignment_services asv ON asv.assignment_id = a.id
+  JOIN services s ON s.id = asv.service_id AND s.status = 'active'
+  JOIN clients c ON c.id = s.client_id
+  WHERE bal.ended_at IS NULL AND bal.backbone_device_id = ?
+`;
+
+/**
+ * Quem fica sem sinal se `deviceId` parar (uma manutenção numa torre): os clientes dele e dos
+ * equipamentos que só recebem sinal através dele.
+ */
+export function clientsDownstreamOf(db: Database.Database, deviceId: number): IncidentClient[] {
+  const active = new Set((db.prepare("SELECT id FROM backbone_devices WHERE status <> 'retired'").all() as Array<{ id: number }>).map((row) => row.id));
+  const uplinks = new Map<number, number[]>();
+  for (const link of db.prepare('SELECT device_id AS deviceId, upstream_device_id AS upstreamId FROM backbone_links')
+    .all() as Array<{ deviceId: number; upstreamId: number }>) {
+    if (!active.has(link.deviceId) || !active.has(link.upstreamId)) continue;
+    uplinks.set(link.deviceId, [...(uplinks.get(link.deviceId) ?? []), link.upstreamId]);
+  }
+  const clientsOf = db.prepare(CLIENTS_OF_DEVICE_SQL);
+  const clients = new Map<number, IncidentClient>();
+  for (const id of downstreamClosure(deviceId, uplinks)) for (const row of clientsOf.all(id) as IncidentClient[]) clients.set(row.clientId, row);
+  return [...clients.values()].sort((a, b) => a.clientCode.localeCompare(b.clientCode));
+}
+
 /**
  * Os incidentes do backbone, derivados das transições que a sonda já grava: não há tabela
  * própria. Só as causas são devolvidas; o que caiu por arrasto entra em `draggedDevices`.
@@ -101,15 +130,7 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
     cause.startedAt <= shift(outage.startedAt, slackSeconds) &&
     (cause.status === 'open' || cause.endedAt === null || cause.endedAt > outage.startedAt));
 
-  const clientsOf = db.prepare(`
-    SELECT DISTINCT c.id AS clientId, c.client_code AS clientCode, c.full_name AS clientName, c.zone
-    FROM backbone_assignment_links bal
-    JOIN service_device_assignments a ON a.id = bal.assignment_id AND a.end_date IS NULL
-    JOIN assignment_services asv ON asv.assignment_id = a.id
-    JOIN services s ON s.id = asv.service_id AND s.status = 'active'
-    JOIN clients c ON c.id = s.client_id
-    WHERE bal.ended_at IS NULL AND bal.backbone_device_id = ?
-  `);
+  const clientsOf = db.prepare(CLIENTS_OF_DEVICE_SQL);
 
   const incidents: NetworkIncident[] = outages
     .filter((outage) => (outage.endedAt ?? now) >= windowStart && !isConsequence(outage))

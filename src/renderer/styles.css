@@ -3874,9 +3874,14 @@ h2 {
   }
 
   .inline-actions > *,
-  .filter-bar > *,
-  .dialog-actions > button {
+  .filter-bar > * {
     min-width: min(100%, 180px);
+  }
+
+  /* Duas colunas: uma por linha comia metade do diálogo (a ficha do cliente tem seis ações). */
+  .dialog-actions > button {
+    flex: 1 1 calc(50% - var(--space-2));
+    min-width: 0;
   }
 
   .filter-bar {
@@ -6922,6 +6927,22 @@ button.danger:disabled {
 .button-link:hover {
   border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
   color: var(--text);
+}
+
+/* Aviso de manutenção: tipo e data, início e fim, na grelha de duas colunas. */
+.maintenance-notice-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.maintenance-notice-count {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 480px) {
+  .maintenance-notice-form { grid-template-columns: 1fr; }
 }
 
 /* Área do cliente: link novo + links ativos (0108). */

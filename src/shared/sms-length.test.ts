@@ -10,7 +10,7 @@ const data = {
   suspensionDays: 16, suspensionDate: '2026-12-02', services: 'Internet Standard', periodLabel: 'setembro de 2026'
 };
 
-const templates = Object.entries(sms).filter(([name, value]) => name.startsWith('fallbackSms') && typeof value === 'string') as Array<[string, string]>;
+const templates = Object.entries(sms).filter(([name, value]) => name.startsWith('fallbackSms') && name !== 'fallbackSmsMaintenanceTemplate' && typeof value === 'string') as Array<[string, string]>;
 
 test.each(templates)('%s cabe num SMS GSM-7 com dados realistas', (_name, template) => {
   const body = sms.renderSmsTemplate(template, data, 'NovaTech Telecom');

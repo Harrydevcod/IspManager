@@ -200,7 +200,7 @@ export function enqueueSmsFallbackForWhatsapp(outboxId: number, now: Date = new 
     const notice = db.prepare(`
       SELECT payment_id AS paymentId, notice_type AS stage FROM whatsapp_notices WHERE outbox_id = ? LIMIT 1
     `).get(outboxId) as { paymentId: number; stage: NoticeType } | undefined;
-    if (!notice) return enqueueOutageSmsFallback(db, outboxId);
+    if (!notice) return enqueueOutageSmsFallback(db, outboxId) || enqueueMaintenanceSmsFallback(db, outboxId);
     if (!smsChannelActive(db)) return false;
     const funnel = loadFunnel();
     const row = loadOverdueCandidates(Math.max(0, -funnel[0].threshold)).find((c) => c.paymentId === notice.paymentId);
@@ -235,6 +235,24 @@ function enqueueOutageSmsFallback(db: Database.Database, outboxId: number): bool
   db.transaction(() => {
     const smsId = enqueueSmsNotification({ clientId: row.clientId, eventType: outageSmsEvent(row.kind), toPhone, body: outageSmsBody(row.kind) });
     db.prepare("UPDATE incident_notices SET channel = 'sms', outbox_id = ? WHERE id = ?").run(smsId, row.id);
+  })();
+  return true;
+}
+
+/** O mesmo recurso para um aviso de manutenção: o SMS leva o texto curto gravado no aviso. */
+function enqueueMaintenanceSmsFallback(db: Database.Database, outboxId: number): boolean {
+  const row = db.prepare(`
+    SELECT r.id, r.client_id AS clientId, n.sms_body AS body, c.phone
+    FROM maintenance_notice_recipients r
+    JOIN maintenance_notices n ON n.id = r.notice_id
+    JOIN clients c ON c.id = r.client_id
+    WHERE r.channel = 'whatsapp' AND r.outbox_id = ?
+  `).get(outboxId) as { id: number; clientId: number; body: string; phone: string | null } | undefined;
+  const toPhone = normalizeSmsPhone(row?.phone || '');
+  if (!row || !toPhone || !smsChannelActive(db)) return false;
+  db.transaction(() => {
+    const smsId = enqueueSmsNotification({ clientId: row.clientId, eventType: 'maintenance_notice', toPhone, body: row.body });
+    db.prepare("UPDATE maintenance_notice_recipients SET channel = 'sms', outbox_id = ? WHERE id = ?").run(smsId, row.id);
   })();
   return true;
 }

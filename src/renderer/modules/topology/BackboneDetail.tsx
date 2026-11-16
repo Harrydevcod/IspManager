@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Link2,
   Map,
+  Megaphone,
   Pencil,
   RadioTower,
   Search,
@@ -17,7 +18,9 @@ import type {
   BackbonePage,
   BackboneStatus
 } from '../../../shared/backbone';
+import { useState } from 'react';
 import { Badge, Button, Field } from '../../components';
+import { MaintenanceNoticeDialog } from './MaintenanceNoticeDialog';
 import { statusLabel, statusTone } from '../../lib/status';
 
 const STATUS_LABEL: Record<BackboneStatus, string> = {
@@ -75,6 +78,7 @@ export function BackboneDetail({
   onLinkedPageChange,
   onLinkedRetry
 }: BackboneDetailProps) {
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   if (selectedId === null) {
     return (
       <section className="backbone-detail backbone-detail-empty" aria-label="Detalhe do backbone">
@@ -151,9 +155,15 @@ export function BackboneDetail({
             >
               Ligar equipamentos
             </Button>
+            {backbone.status !== 'retired' && (
+              <Button variant="ghost" size="sm" leadingIcon={<Megaphone size={14} aria-hidden />} onClick={() => setMaintenanceOpen(true)}>
+                Avisar manutenção
+              </Button>
+            )}
           </>
         )}
       </div>
+      {canManage && <MaintenanceNoticeDialog deviceId={backbone.id} deviceName={backbone.name} open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)} />}
 
       <div className="backbone-facts">
         <section aria-labelledby="backbone-identity-title">

@@ -4,6 +4,7 @@ export {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
   fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappMaintenanceTemplate,
   fallbackWhatsappTemplate,
   fallbackWhatsappTestTemplate
 } from '../../shared/whatsapp';
