@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { webcrypto } from 'node:crypto';
-import { createPortalCapability, encryptPortalSnapshot, decryptPortalSnapshot } from './customer-portal-crypto';
+import { createPortalCapability, createPortalSecret, derivePortalLink, encryptPortalSnapshot, decryptPortalSnapshot } from './customer-portal-crypto';
 
 describe('customer portal snapshot encryption', () => {
   test('a fresh capability decrypts its snapshot and another cannot', () => {
@@ -22,6 +22,20 @@ describe('customer portal snapshot encryption', () => {
     bytes[0] ^= 1;
     expect(() => decryptPortalSnapshot(capability, { ...a, ciphertext: bytes.toString('base64url') })).toThrow();
   });
+  test('o link curto: o browser deriva o mesmo id e a mesma chave do segredo de 22 caracteres', async () => {
+    const secret = createPortalSecret();
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const { id, key } = derivePortalLink(secret);
+    expect(derivePortalLink(secret)).toEqual({ id, key });
+    expect(derivePortalLink(createPortalSecret()).id).not.toBe(id);
+    const digest = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(`ispm-portal-id:${secret}`))).toString('hex');
+    const ikm = await webcrypto.subtle.importKey('raw', Buffer.from(secret, 'base64url'), 'HKDF', false, ['deriveBits']);
+    const bits = await webcrypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('ispm-portal-key') }, ikm, 256);
+    expect(digest).toBe(id);
+    expect(Buffer.from(bits).toString('base64url')).toBe(key);
+    for (const bad of ['', 'curto', `${secret}x`, `${secret.slice(0, 21)}=`]) expect(() => derivePortalLink(bad)).toThrow();
+  });
+
   test('the browser Web Crypto API can open the desktop envelope', async () => {
     const capability = createPortalCapability();
     const envelope = encryptPortalSnapshot(capability, { customerName: 'Ana' });

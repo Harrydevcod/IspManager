@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { issueCustomerPortal, revokeCustomerPortal } from './customer-portal-publish';
+import { derivePortalLink } from './customer-portal-crypto';
 
 afterEach(() => vi.unstubAllGlobals());
 test('publishes ciphertext and revokes without sending the decryption key to the relay', async () => {
@@ -20,11 +21,18 @@ test('publishes ciphertext and revokes without sending the decryption key to the
   vi.stubGlobal('fetch', fetch);
   try {
     const result = await issueCustomerPortal(db, 1, 'https://relay.example', 'secret', new Date('2026-11-16T12:00:00Z'));
-    const key = new URL(result.url).hash.slice(1);
+    // Link curto: /c#<22>, e nem o segredo nem a chave derivada chegam ao relé.
+    expect(result.url).toMatch(/^https:\/\/relay\.example\/c#[A-Za-z0-9_-]{22}$/);
+    const secret = new URL(result.url).hash.slice(1);
+    const { id, key } = derivePortalLink(secret);
+    expect(result.id).toBe(id);
     const body = String(fetch.mock.calls[0][1]?.body);
     expect(body).not.toContain('Ana');
-    expect(body).not.toContain(key);
-    expect(fetch.mock.calls[0][0]).not.toContain(key);
+    for (const value of [secret, key]) {
+      expect(body).not.toContain(value);
+      expect(fetch.mock.calls[0][0]).not.toContain(value);
+    }
+    expect(fetch.mock.calls[0][0]).toBe(`https://relay.example/customer/${id}/snapshot`);
     await expect(revokeCustomerPortal(db, result.id, 'https://other.example', 'secret')).rejects.toThrow();
     fetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await revokeCustomerPortal(db, result.id, 'https://relay.example', 'secret');
@@ -50,7 +58,7 @@ test('o relé segue a regra do relé SMS: HTTPS, HTTP só local, e sem caminho',
     for (const bad of ['http://relay.example', 'https://relay.example/sub', 'https://u:p@relay.example', 'ftp://relay.example']) {
       await expect(issueCustomerPortal(db, 1, bad, 'secret')).rejects.toThrow('Endereço do relé inválido');
     }
-    expect((await issueCustomerPortal(db, 1, 'http://127.0.0.1:8787/', 'secret')).url).toMatch(/^http:\/\/127\.0\.0\.1:8787\/customer\/[0-9a-f]{64}#/);
-    expect((await issueCustomerPortal(db, 1, 'https://relay.example/', 'secret')).url).toMatch(/^https:\/\/relay\.example\/customer\//);
+    expect((await issueCustomerPortal(db, 1, 'http://127.0.0.1:8787/', 'secret')).url).toMatch(/^http:\/\/127\.0\.0\.1:8787\/c#/);
+    expect((await issueCustomerPortal(db, 1, 'https://relay.example/', 'secret')).url).toMatch(/^https:\/\/relay\.example\/c#/);
   } finally { db.close(); }
 });
