@@ -153,6 +153,13 @@ export type PaymentRow = {
   balanceCve: number;
   /** Link de pagamento Stripe ainda válido para o saldo; ausente quando não há. */
   paymentLinkUrl?: string | null;
+  /** O que a fatura cobra e de quando, para `{servico}` e `{mes}` (`describePayments`). */
+  servicesLabel?: string;
+  periodLabel?: string;
+  /** O recibo: o valor recebido e todas as faturas que liquidou (`describeReceipts`). */
+  receiptAmountCve?: number | null;
+  receiptServicesLabel?: string | null;
+  receiptPeriodLabel?: string | null;
 };
 
 export type PaymentStatus = PaymentRow['status'];

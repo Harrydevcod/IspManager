@@ -4,10 +4,10 @@ export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_ove
 
 // GSM-7 de propósito: sem á/ã/ç/õ cada aviso cabe em 1 SMS (160 caracteres);
 // com eles passa a UCS-2 (70 por parte). Por isso "Caso tenha pago" e não "Se já pagou".
-export const fallbackSmsInvoiceIssuedTemplate = 'Caro cliente, a sua fatura {fatura} de {mes}, no valor de {valor}, foi emitida. Vencimento: {vencimento}. Obrigado, {empresa}';
-export const fallbackSmsReceiptConfirmedTemplate = 'Caro cliente, confirmamos o pagamento de {valor} referente a {mes}. Recibo {recibo}. Muito obrigado, {empresa}';
-export const fallbackSmsPaymentOverdueTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({valor}) venceu a {vencimento}. Pedimos que regularize. Caso tenha pago, ignore. {empresa}';
-export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatura} ({valor}) continua por pagar. A internet pode ser suspensa a {data_suspensao}. Caso tenha pago, ignore. {empresa}';
+export const fallbackSmsInvoiceIssuedTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}), no valor de {valor}, foi emitida. Vence a {vencimento}. Obrigado, {empresa}';
+export const fallbackSmsReceiptConfirmedTemplate = 'Caro cliente, confirmamos o pagamento de {valor} de {servico}, {mes}. Recibo {recibo}. Muito obrigado, {empresa}';
+export const fallbackSmsPaymentOverdueTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({servico}, {valor}) venceu a {vencimento}. Caso tenha pago, ignore. {empresa}';
+export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatura} ({servico}, {mes}, {valor}) esta por pagar. A internet pode ser suspensa a {data_suspensao}. {empresa}';
 export const fallbackSmsOutageTemplate = 'Caro cliente, detetamos uma avaria na rede que afeta a sua internet. A equipa esta a resolver e avisamos quando voltar. Pedimos desculpa. {empresa}';
 export const fallbackSmsRestoredTemplate = 'Caro cliente, a avaria na rede foi resolvida e a sua internet esta reposta. Obrigado pela paciencia. {empresa}';
 
@@ -28,6 +28,10 @@ export type SmsTemplateData = {
    * tem um URL longo, que num SMS custa vários segmentos. Quem quiser, põe `{link}`.
    */
   paymentLink?: string | null;
+  /** O que a fatura ou o recibo cobra: `{servico}`. */
+  services?: string | null;
+  /** O período já descrito (por extenso), para `{mes}`. */
+  periodLabel?: string | null;
 };
 
 export function normalizeSmsPhone(phone: string): string {
