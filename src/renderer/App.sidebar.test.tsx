@@ -128,6 +128,38 @@ describe('sidebar collapse', () => {
   });
 });
 
+describe('legenda do menu recolhido', () => {
+  const tip = () => document.querySelector('.nav-rail-tip');
+  const module = (container: HTMLElement, label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('.nav-list button')].find((button) => button.textContent?.trim().startsWith(label))!;
+
+  test('ao passar o rato num ícone mostra o nome do módulo e some ao sair', async () => {
+    const container = await mountApp();
+    await act(async () => { toggle(container).click(); });
+    const clients = module(container, 'Clientes');
+    expect(clients.title).toBe('');
+
+    await act(async () => { clients.dispatchEvent(new MouseEvent('pointerover', { bubbles: true })); });
+    expect(tip()?.textContent).toBe('Clientes');
+
+    await act(async () => { clients.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body })); });
+    expect(tip()).toBeNull();
+  });
+
+  test('com o teclado também aparece, e o Procurar diz o atalho', async () => {
+    const container = await mountApp();
+    await act(async () => { toggle(container).click(); });
+    await act(async () => { container.querySelector<HTMLButtonElement>('.palette-trigger')!.focus(); });
+    expect(tip()?.textContent).toBe('Procurar · Ctrl K');
+  });
+
+  test('com o menu aberto não há legenda', async () => {
+    const container = await mountApp();
+    await act(async () => { module(container, 'Clientes').focus(); });
+    expect(tip()).toBeNull();
+  });
+});
+
 describe('pt-PT na navegação', () => {
   /**
    * A navegação é a primeira coisa que se lê na app e andou meses sem acentos
