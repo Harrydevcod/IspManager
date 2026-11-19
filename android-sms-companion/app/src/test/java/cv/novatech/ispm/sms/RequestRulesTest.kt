@@ -74,3 +74,35 @@ class RequestRulesTest {
     assertEquals(listOf("a"), RequestRules.rejectableIds(rows, sendingIds = setOf("b")))
   }
 }
+
+class ResendTest {
+  private val now = 1_700_000_000_000L
+  private fun req(status: String, attempts: Int = 0) = SmsRequest(
+    id = "a", toPhone = "+2389912233", body = "ola", eventType = "receipt_confirmed",
+    status = status, error = "Sem serviço de rede", sentAt = now - 1000, deliveredAt = now - 500,
+    attempts = attempts
+  )
+
+  @Test fun falhadaVoltaAAprovadaELimpaAFalha() {
+    val row = RequestRules.resend(req("failed"), now)
+    assertEquals("approved", row.status)
+    assertNull(row.error)
+    assertNull(row.sentAt)
+    assertNull(row.deliveredAt)
+    assertEquals(1, row.attempts)
+    assertEquals(now, row.approvedAt)
+    assertEquals(now, row.updatedAt)
+  }
+
+  @Test fun soAsFalhadasSeReenviam() {
+    for (status in listOf("sent", "approved", "pending_approval", "rejected", "sending")) {
+      val row = req(status)
+      assertEquals(row, RequestRules.resend(row, now))
+    }
+  }
+
+  @Test fun aoTerceiroReenvioDesiste() {
+    val row = req("failed", attempts = RequestRules.MAX_RESENDS)
+    assertEquals(row, RequestRules.resend(row, now))
+  }
+}

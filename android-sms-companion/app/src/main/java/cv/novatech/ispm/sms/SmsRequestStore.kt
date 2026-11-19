@@ -16,7 +16,9 @@ data class SmsRequest(
   val updatedAt: Long? = null,
   val approvedAt: Long? = null,
   val sentAt: Long? = null,
-  val deliveredAt: Long? = null
+  val deliveredAt: Long? = null,
+  /** Quantas vezes já foi reenviado à mão. Linhas da 0.12 leem-se como 0. */
+  val attempts: Int = 0
 )
 
 /**
@@ -73,6 +75,7 @@ class SmsRequestStore(context: Context) {
       .put("approvedAt", r.approvedAt ?: 0L)
       .put("sentAt", r.sentAt ?: 0L)
       .put("deliveredAt", r.deliveredAt ?: 0L)
+      .put("attempts", r.attempts)
 
     /** Rows written by 0.1.0 have no timestamps; they read back as null. */
     fun decode(raw: String): List<SmsRequest> {
@@ -91,7 +94,8 @@ class SmsRequestStore(context: Context) {
           updatedAt = o.optTime("updatedAt"),
           approvedAt = o.optTime("approvedAt"),
           sentAt = o.optTime("sentAt"),
-          deliveredAt = o.optTime("deliveredAt")
+          deliveredAt = o.optTime("deliveredAt"),
+          attempts = o.optInt("attempts", 0)
         )
       }
     }
