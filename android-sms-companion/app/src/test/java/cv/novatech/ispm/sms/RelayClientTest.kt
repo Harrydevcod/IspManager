@@ -3,6 +3,7 @@ package cv.novatech.ispm.sms
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
+import cv.novatech.ispm.sms.state.RelayPoll
 import org.junit.Test
 
 class RelayClientTest {
@@ -17,12 +18,15 @@ class RelayClientTest {
     val answers = LinkedHashMap<String, RelayEnvelope>()
     val calls = ArrayList<String>()
     var postStatus = 201
+    /** O que a caixa responde ao GET: 200 normalmente, outro código para simular o relé em baixo. */
+    var listStatus = 200
 
     override fun call(method: String, url: String, token: String, body: String?): Pair<Int, String> {
       calls += "$method ${url.substringAfter(keys.mailbox.toHex())}"
       assertTrue(url.startsWith("https://relay.test/m/${keys.mailbox.toHex()}/"))
       assertEquals(keys.phone.toHex(), token)
       if (method == "GET") {
+        if (listStatus != 200) return listStatus to ""
         val list = JSONArray()
         pending.forEach { (key, value) -> list.put(JSONObject().put("id", key).put("envelope", json(value))) }
         return 200 to JSONObject().put("requests", list).toString()
@@ -62,7 +66,7 @@ class RelayClientTest {
   @Test fun `runs a sealed request and leaves a sealed answer only the PC can open`() {
     val relay = FakeRelay()
     relay.pending[id] = request("POST", "/requests", "{\"requestId\":\"r1\",\"body\":\"Olá\"}")
-    assertEquals(1, client(relay).pollOnce())
+    assertEquals(RelayPoll.Ok(1), client(relay).pollOnce())
     assertEquals(listOf("POST /requests n-1 {\"requestId\":\"r1\",\"body\":\"Olá\"}"), ran)
 
     val plain = RelayCrypto.open(secret, "response", id, relay.answers.getValue(id), clock)
@@ -80,11 +84,11 @@ class RelayClientTest {
     val envelope = request("POST", "/requests", "{}")
     relay.pending[id] = envelope
     val client = client(relay)
-    assertEquals(1, client.pollOnce())
+    assertEquals(RelayPoll.Ok(1), client.pollOnce())
     relay.pending[id] = envelope
-    assertEquals(0, client.pollOnce())
+    assertEquals(RelayPoll.Ok(0), client.pollOnce())
     // Even a fresh process (no memory of the answer) refuses it: the id is spent on disk.
-    assertEquals(0, client(relay).pollOnce())
+    assertEquals(RelayPoll.Ok(0), client(relay).pollOnce())
     assertEquals(1, ran.size)
   }
 
@@ -93,10 +97,10 @@ class RelayClientTest {
     relay.pending[id] = request("POST", "/requests", "{}")
     relay.postStatus = 503
     val client = client(relay)
-    assertEquals(1, client.pollOnce())
+    assertEquals(RelayPoll.Ok(1), client.pollOnce())
     assertTrue(relay.answers.isEmpty())
     relay.postStatus = 201
-    assertEquals(0, client.pollOnce())
+    assertEquals(RelayPoll.Ok(0), client.pollOnce())
     assertEquals(1, ran.size)
     assertNotNull(relay.answers[id])
   }
@@ -109,7 +113,7 @@ class RelayClientTest {
     val nonce = if (good.nonce.startsWith("A")) "B" + good.nonce.drop(1) else "A" + good.nonce.drop(1)
     relay.pending[id] = good.copy(nonce = nonce)
     relay.pending["00000000-0000-4000-8000-000000000002"] = good
-    assertEquals(0, client(relay).pollOnce())
+    assertEquals(RelayPoll.Ok(0), client(relay).pollOnce())
     assertTrue(ran.isEmpty())
     assertTrue(spent.isEmpty())
     assertTrue(relay.answers.isEmpty())
@@ -117,8 +121,8 @@ class RelayClientTest {
 
   @Test fun `stays silent without a relay address or with a v1 pairing`() {
     val relay = FakeRelay()
-    assertEquals(0, client(relay, url = "").pollOnce())
-    assertEquals(0, client(relay, secret = "segredo-v1").pollOnce())
+    assertEquals(RelayPoll.Off, client(relay, url = "").pollOnce())
+    assertEquals(RelayPoll.Off, client(relay, secret = "segredo-v1").pollOnce())
     assertTrue(relay.calls.isEmpty())
   }
 
@@ -129,5 +133,22 @@ class RelayClientTest {
     assertFalse(RelayClient.acceptableUrl("https://user:pass@rele.exemplo.dev"))
     assertFalse(RelayClient.acceptableUrl("https://rele.exemplo.dev/?k=1"))
     assertFalse(RelayClient.acceptableUrl("rele"))
+  }
+
+  @Test fun `uma resposta que nao e 200 e uma falha, nao uma caixa vazia`() {
+    val relay = FakeRelay()
+    relay.listStatus = 503
+    assertEquals(RelayPoll.Failed("Relé com problema (503)"), client(relay).pollOnce())
+
+    relay.listStatus = 403
+    assertEquals(RelayPoll.Failed("Pareamento recusado pelo relé"), client(relay).pollOnce())
+  }
+
+  @Test fun `sem rede a volta falha, com a razao a vista`() {
+    val morto = object : RelayHttp {
+      override fun call(method: String, url: String, token: String, body: String?): Pair<Int, String> =
+        throw java.io.IOException("Unable to resolve host")
+    }
+    assertEquals(RelayPoll.Failed("Unable to resolve host"), client(morto).pollOnce())
   }
 }

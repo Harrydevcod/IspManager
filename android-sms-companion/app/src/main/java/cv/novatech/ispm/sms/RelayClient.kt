@@ -1,6 +1,7 @@
 package cv.novatech.ispm.sms
 
 import android.content.Context
+import cv.novatech.ispm.sms.state.RelayPoll
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
@@ -35,18 +36,24 @@ class RelayClient(
   /** Answers the relay has not accepted yet: sent again, never computed again. */
   private val unsent = HashMap<String, String>()
 
-  /** One round. Returns how many requests ran. */
-  fun pollOnce(): Int {
+  /**
+   * Uma volta. Distingue "não tinha nada" de "não consegui falar com ele": sem
+   * isso, uma queda do relé passava em silêncio e o PC deixava de chegar cá.
+   */
+  fun pollOnce(): RelayPoll {
     val secret = secret()
     val url = relayUrl().trimEnd('/')
-    if (url.isBlank() || !SECRET.matches(secret)) return 0
+    if (url.isBlank() || !SECRET.matches(secret)) return RelayPoll.Off
     val keys = RelayCrypto.deriveKeys(secret)
     val base = "$url/m/${keys.mailbox.toHex()}"
     val token = keys.phone.toHex()
 
-    val (code, text) = http.call("GET", "$base/requests", token, null)
-    if (code != 200) return 0
-    val list = JSONObject(text).optJSONArray("requests") ?: return 0
+    val fetched = runCatching { http.call("GET", "$base/requests", token, null) }
+      .getOrElse { return RelayPoll.Failed(it.message?.takeIf(String::isNotBlank) ?: "Relé inacessível") }
+    val (code, text) = fetched
+    if (code != 200) return RelayPoll.Failed(relayError(code))
+    val list = runCatching { JSONObject(text).optJSONArray("requests") }.getOrNull()
+      ?: return RelayPoll.Ok(0)
     val listed = HashSet<String>()
     var ran = 0
     for (i in 0 until list.length()) {
@@ -80,7 +87,14 @@ class RelayClient(
     }
     // The PC gave up on these (or they expired): nothing left to deliver.
     unsent.keys.retainAll(listed)
-    return ran
+    return RelayPoll.Ok(ran)
+  }
+
+  /** A razão em palavras que os Ajustes mostram tal e qual. */
+  private fun relayError(code: Int): String = when (code) {
+    401, 403 -> "Pareamento recusado pelo relé"
+    in 500..599 -> "Relé com problema ($code)"
+    else -> "Relé respondeu $code"
   }
 
   companion object {

@@ -21,6 +21,7 @@ import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.SealedSnapshot
 import cv.novatech.ispm.sms.events.EventStore
 import cv.novatech.ispm.sms.state.CompanionStateHolder
+import cv.novatech.ispm.sms.state.NotificationFeed
 import cv.novatech.ispm.sms.widget.IspmWidget
 import cv.novatech.ispm.sms.widget.WidgetRules
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +42,7 @@ class IspmSmsApp : Application() {
   lateinit var settingsStore: SettingsStore private set
   lateinit var dashboardStore: DashboardStore private set
   lateinit var eventStore: EventStore private set
+  lateinit var notificationLog: NotificationLog private set
   lateinit var sendLog: SendLogStore private set
   private lateinit var scheduler: SendScheduler
   lateinit var holder: CompanionStateHolder private set
@@ -56,6 +58,7 @@ class IspmSmsApp : Application() {
     settingsStore = SettingsStore(this)
     dashboardStore = DashboardStore(this)
     eventStore = EventStore(this)
+    notificationLog = NotificationLog(this)
     sendLog = SendLogStore(this)
     scheduler = SendScheduler(
       store = sendLog,
@@ -69,7 +72,10 @@ class IspmSmsApp : Application() {
       requestStore = requestStore,
       scope = scope,
       send = { req, sim -> SmsSender.send(this, req, sim) },
-      dispatch = { req, go -> scheduler.dispatch(req.id, req.body, go) }
+      dispatch = { req, go -> scheduler.dispatch(req.id, req.body, go) },
+      notificationLog = notificationLog,
+      // O PC vai buscá-los no tick seguinte; pedir sincronização acelera-o.
+      onNotificationEvent = { kind, payload -> eventStore.add(kind, payload) }
     )
     Notifications.ensureChannels(this)
 
@@ -81,6 +87,7 @@ class IspmSmsApp : Application() {
       fixed
     }
     holder.rearm(rearm)
+    notificationLog.prune(now)
     holder.setDashboard(dashboardStore.load(), dashboardStore.receivedAt())
 
     // Re-read the LAN address whenever the default network changes (Wi-Fi swap, DHCP renew).
@@ -145,6 +152,8 @@ class IspmSmsApp : Application() {
       Notifications.notifyOperationAlert(this, dashboard.operation.headline)
     }
     dashboardStore.setLastSeverity(severity)
+    // O histórico do sino vem no mesmo resumo (desktop 2.74+); sem ele fica só o daqui.
+    NotificationFeed.parseSnapshot(json)?.let { (items, seenAt) -> holder.acceptNotificationFeed(items, seenAt) }
     holder.setDashboard(dashboard, now)
     return true
   }

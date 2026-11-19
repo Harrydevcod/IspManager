@@ -6,6 +6,11 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import cv.novatech.ispm.sms.state.NotificationEntry
+import cv.novatech.ispm.sms.state.RelayEvent
+import cv.novatech.ispm.sms.state.RelayHealth
+import cv.novatech.ispm.sms.state.RelayHealthRules
+import cv.novatech.ispm.sms.state.RelayPoll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,6 +18,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Foreground service that keeps the LAN server alive with the screen off and
@@ -55,21 +61,68 @@ class CompanionService : Service() {
       seen = PrefsRelaySeen(this),
       execute = { method, path, nonce, body -> server!!.relayReply(method, path, nonce, body) }
     )
+    val health = RelayHealthStore(this)
     relay = app.scope.launch(Dispatchers.IO) {
       var busyUntil = 0L
+      var state = health.read()
+      app.holder.setRelayHealth(state)
       while (isActive) {
         val now = System.currentTimeMillis()
         val lanQuiet = now - (server?.lastLanAt ?: 0L) > LAN_QUIET_MS
-        val ran = if (lanQuiet) runCatching { client.pollOnce() }.getOrDefault(0) else 0
+        // A rede local a responder: o relé deixa de importar e o relógio da queda limpa-se.
+        val poll = if (lanQuiet) runCatching { client.pollOnce() }.getOrElse { RelayPoll.Failed(it.message ?: "Relé inacessível") } else null
+        val next = if (poll == null) RelayHealthRules.onLanBack(state) else {
+          val (updated, event) = RelayHealthRules.onResult(state, poll, now)
+          announce(event, updated, now)
+          updated
+        }
+        if (next != state) {
+          state = next
+          health.write(state)
+          app.holder.setRelayHealth(state)
+        }
+        val ran = (poll as? RelayPoll.Ok)?.ran ?: 0
         if (ran > 0) busyUntil = now + BUSY_MS
         // ponytail: fixed polling; long-poll if the wait or the battery ever matters.
-        delay(if (now < busyUntil || ran > 0) BUSY_POLL_MS else IDLE_POLL_MS)
+        delay(
+          if (now < busyUntil || ran > 0) BUSY_POLL_MS
+          else maxOf(IDLE_POLL_MS, RelayHealthRules.pollIntervalMs(state))
+        )
       }
     }
 
     // Keep the persistent notification's address in step with the network.
     watcher = app.scope.launch {
       app.holder.state.map { it.listenAddress }.distinctUntilChanged().collect { goForeground(it) }
+    }
+  }
+
+  /**
+   * A queda do relé e o seu regresso entram no sino e saem como aviso do
+   * sistema — uma vez por queda, nunca a cada volta.
+   */
+  private fun announce(event: RelayEvent?, state: RelayHealth, now: Long) {
+    val app = application as IspmSmsApp
+    when (event) {
+      RelayEvent.Down -> {
+        Notifications.notifyAlert(this, Notifications.RELAY_NOTIF_ID, "Relé sem ligação", state.lastError)
+        app.holder.appendNotification(
+          NotificationEntry(
+            uid = UUID.randomUUID().toString(), kind = "relay_down", severity = "danger",
+            title = "Relé sem ligação", text = state.lastError, tab = "ajustes", at = now, origin = "phone"
+          )
+        )
+      }
+      RelayEvent.Up -> {
+        Notifications.notifyAlert(this, Notifications.RELAY_NOTIF_ID, "Relé de volta", null, warning = false)
+        app.holder.appendNotification(
+          NotificationEntry(
+            uid = UUID.randomUUID().toString(), kind = "relay_up", severity = "info",
+            title = "Relé de volta", tab = "ajustes", at = now, origin = "phone"
+          )
+        )
+      }
+      null -> Unit
     }
   }
 

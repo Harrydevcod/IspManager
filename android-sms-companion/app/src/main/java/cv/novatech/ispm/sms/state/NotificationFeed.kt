@@ -2,6 +2,9 @@ package cv.novatech.ispm.sms.state
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /**
  * O histórico do sino, que é comum ao PC e ao telemóvel.
@@ -73,6 +76,41 @@ object NotificationFeed {
   /** O número do sino: alertas de agora mais o que nasceu depois de abrir o painel. */
   fun unseenCount(rows: List<NotificationEntry>, seenAt: Long?): Int =
     rows.count { it.at > (seenAt ?: 0L) }
+
+  /**
+   * O histórico que vem dentro do resumo do PC. Ausente numa desktop anterior à
+   * 2.74 — então fica só o que nasceu aqui, que é o comportamento de antes.
+   */
+  fun parseSnapshot(json: String): Pair<List<NotificationEntry>, Long?>? = runCatching {
+    val block = JSONObject(json).optJSONObject("notifications") ?: return null
+    val array = block.optJSONArray("items") ?: JSONArray()
+    val items = (0 until array.length()).mapNotNull { i ->
+      val o = array.optJSONObject(i) ?: return@mapNotNull null
+      val uid = o.optString("uid")
+      if (uid.isBlank()) return@mapNotNull null
+      NotificationEntry(
+        uid = uid,
+        kind = o.optString("kind").ifBlank { "info" },
+        severity = o.optString("severity").ifBlank { "info" },
+        title = o.optString("title").ifBlank { return@mapNotNull null },
+        text = o.optString("detail").ifBlank { null },
+        tab = o.optString("tab").ifBlank { "painel" },
+        at = parseAt(o.optString("at")),
+        read = o.optBoolean("read", false),
+        origin = "pc"
+      )
+    }
+    items to parseAt(block.optString("seenAt")).takeIf { it > 0L }
+  }.getOrNull()
+
+  /** O PC manda as datas como o SQLite as escreve: "AAAA-MM-DD hh:mm:ss", em UTC. */
+  fun parseAt(value: String?): Long {
+    if (value.isNullOrBlank()) return 0L
+    return runCatching {
+      if (value.contains('T')) Instant.parse(value).toEpochMilli()
+      else LocalDateTime.parse(value.trim().replace(' ', 'T')).toInstant(ZoneOffset.UTC).toEpochMilli()
+    }.getOrDefault(0L)
+  }
 
   fun encode(e: NotificationEntry): JSONObject = JSONObject()
     .put("uid", e.uid)

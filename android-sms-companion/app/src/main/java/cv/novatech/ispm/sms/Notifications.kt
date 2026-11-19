@@ -176,6 +176,23 @@ object Notifications {
     manager.notify(ALERT_NOTIF_ID, notification)
   }
 
+  /** Um aviso simples no canal da operação (o relé que cai, o relé que volta). */
+  fun notifyAlert(context: Context, id: Int, title: String, text: String?, warning: Boolean = true) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    val notification = NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
+      .setSmallIcon(if (warning) android.R.drawable.stat_sys_warning else android.R.drawable.stat_notify_sync)
+      .setContentTitle(title)
+      .apply { if (!text.isNullOrBlank()) setContentText(text) }
+      .setPriority(if (warning) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+      .setAutoCancel(true)
+      .setContentIntent(openApp(context))
+      .build()
+    manager.notify(id, notification)
+  }
+
+  /** Id fixo do aviso do relé: a queda e o regresso substituem-se um ao outro. */
+  const val RELAY_NOTIF_ID = 8_120
+
   private fun openApp(context: Context): PendingIntent {
     val intent = Intent(context, MainActivity::class.java).apply {
       flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP

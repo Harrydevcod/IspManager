@@ -57,7 +57,11 @@ data class CompanionUiState(
   /** Desde quando o relé não responde (null = a responder, ou sem relé). */
   val relayFailingSince: Long? = null,
   /** A razão da última falha do relé, nas palavras que os Ajustes mostram. */
-  val relayLastError: String? = null
+  val relayLastError: String? = null,
+  /** O histórico do sino, já com o feed do PC e o que nasceu aqui juntos. */
+  val notifications: List<NotificationEntry> = emptyList(),
+  /** Quando o painel foi aberto pela última vez: o número conta o que nasceu depois. */
+  val notificationsSeenAt: Long? = null
 )
 
 data class PairingCode(val sas: String, val desktopName: String, val confirmedOnPhone: Boolean = false)
@@ -107,7 +111,9 @@ fun buildUiState(
   syncRequestedAt: Long? = null,
   pairingCode: PairingCode? = null,
   relayFailingSince: Long? = null,
-  relayLastError: String? = null
+  relayLastError: String? = null,
+  notifications: List<NotificationEntry> = emptyList(),
+  notificationsSeenAt: Long? = null
 ): CompanionUiState {
   val ui = requests.map { it.toUi(sendingIds.contains(it.id), waiting[it.id]) }
   val pending = ui.filter { it.status in OPEN }
@@ -136,6 +142,8 @@ fun buildUiState(
     syncRequestedAt = syncRequestedAt,
     pairingCode = pairingCode,
     relayFailingSince = relayFailingSince,
-    relayLastError = relayLastError
+    relayLastError = relayLastError,
+    notifications = notifications,
+    notificationsSeenAt = notificationsSeenAt
   )
 }
