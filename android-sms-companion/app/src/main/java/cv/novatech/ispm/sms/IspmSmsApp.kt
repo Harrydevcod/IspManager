@@ -7,6 +7,7 @@ import android.telephony.SubscriptionManager
 import cv.novatech.ispm.sms.send.SendBudget
 import cv.novatech.ispm.sms.send.SendLogStore
 import cv.novatech.ispm.sms.send.SendScheduler
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 import android.content.Context
@@ -21,6 +22,7 @@ import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.SealedSnapshot
 import cv.novatech.ispm.sms.events.EventStore
 import cv.novatech.ispm.sms.state.CompanionStateHolder
+import cv.novatech.ispm.sms.state.NotificationEntry
 import cv.novatech.ispm.sms.state.NotificationFeed
 import cv.novatech.ispm.sms.widget.IspmWidget
 import cv.novatech.ispm.sms.widget.WidgetRules
@@ -81,13 +83,18 @@ class IspmSmsApp : Application() {
 
     val now = System.currentTimeMillis()
     var rearm = emptyList<String>()
+    var interrupted = emptyList<SmsRequest>()
     requestStore.replaceAll { rows ->
-      val (fixed, ids) = RequestRules.recover(RequestRules.prune(rows, now), now)
+      val pruned = RequestRules.prune(rows, now)
+      val (fixed, ids) = RequestRules.recover(pruned, now)
       rearm = ids
+      interrupted = fixed.filter { row -> pruned.any { it.id == row.id && it.status == "sending" } }
       fixed
     }
     holder.rearm(rearm)
     notificationLog.prune(now)
+    // O processo morreu a meio de um envio: a linha ficou falhada e ninguém soube.
+    interrupted.forEach { noteSmsFailure(it) }
     holder.setDashboard(dashboardStore.load(), dashboardStore.receivedAt())
 
     // Re-read the LAN address whenever the default network changes (Wi-Fi swap, DHCP renew).
@@ -158,7 +165,27 @@ class IspmSmsApp : Application() {
     return true
   }
 
+  /**
+   * Um SMS que falhou ao sair daqui: entra no sino com o botão de reenviar e
+   * sai como aviso do sistema. Nasce neste telemóvel, por isso é por aqui que
+   * chega ao PC — ele não a grava outra vez.
+   */
+  fun noteSmsFailure(row: SmsRequest) {
+    val who = row.clientName?.takeIf { it.isNotBlank() } ?: row.toPhone
+    val title = "SMS para $who falhou"
+    Notifications.notifyAlert(this, SMS_FAILED_BASE_ID + (row.id.hashCode() and 0xFFF), title, row.error)
+    holder.appendNotification(
+      NotificationEntry(
+        uid = UUID.randomUUID().toString(), kind = "sms_failed", severity = "warn",
+        title = title, text = row.error, tab = "historico",
+        at = System.currentTimeMillis(), origin = "phone", requestId = row.id
+      )
+    )
+  }
+
   companion object {
+    private const val SMS_FAILED_BASE_ID = 9_000
+
     fun startService(context: Context) {
       ContextCompat.startForegroundService(context, Intent(context, CompanionService::class.java))
     }

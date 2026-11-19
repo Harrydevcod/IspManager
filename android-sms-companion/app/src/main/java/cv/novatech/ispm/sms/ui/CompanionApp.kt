@@ -186,7 +186,7 @@ private fun PairedApp(
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt, state.syncRequestedAt, onSync, onToggleTheme)
         Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen, pendingEvents, onFieldEvent)
         Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onRejectAll)
-        Tab.HISTORICO -> HistoryScreen(state)
+        Tab.HISTORICO -> HistoryScreen(state, onResend)
         Tab.DEFINICOES -> SettingsScreen(
           state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing,
           onLockEnabledChange, themePref, onThemeChange

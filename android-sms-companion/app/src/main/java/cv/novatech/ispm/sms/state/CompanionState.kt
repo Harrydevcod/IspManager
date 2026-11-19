@@ -22,7 +22,9 @@ data class RequestUi(
   val updatedAt: Long? = null,
   val deliveredAt: Long? = null,
   /** Approved but waiting for a SIM with room: 0 = behind another request, else when it can go. */
-  val waitUntil: Long? = null
+  val waitUntil: Long? = null,
+  /** Reenvios já feitos à mão: ao terceiro o botão desaparece. */
+  val attempts: Int = 0
 )
 
 data class SimOption(val subscriptionId: Int, val label: String)
@@ -93,7 +95,8 @@ private fun SmsRequest.toUi(sending: Boolean, waitUntil: Long?) = RequestUi(
   id = id, clientName = clientName, toPhone = toPhone, eventType = eventType,
   body = body, status = status, error = error, sending = sending,
   inFlight = status == "sending", updatedAt = updatedAt, deliveredAt = deliveredAt,
-  waitUntil = waitUntil.takeIf { status == "approved" }
+  waitUntil = waitUntil.takeIf { status == "approved" },
+  attempts = attempts
 )
 
 fun buildUiState(

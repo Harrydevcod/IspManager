@@ -15,9 +15,12 @@ class SmsResultReceiver : BroadcastReceiver() {
     val now = System.currentTimeMillis()
     when (intent.action) {
       ACTION_SENT -> {
-        app.requestStore.update(id) {
+        val before = app.requestStore.find(id)?.status
+        val after = app.requestStore.update(id) {
           RequestRules.onSentResult(it, resultCode == Activity.RESULT_OK, part == total - 1, resultCode, now)
         }
+        // Só na passagem para falhado: as partes seguintes não repetem o aviso.
+        if (after?.status == "failed" && before != "failed") app.noteSmsFailure(after)
         // The carrier's own limit: that SIM rests an hour, the queue moves to the other one.
         if (resultCode == RESULT_ERROR_LIMIT_EXCEEDED) app.sendLog.pauseSimOf(id, now)
       }
