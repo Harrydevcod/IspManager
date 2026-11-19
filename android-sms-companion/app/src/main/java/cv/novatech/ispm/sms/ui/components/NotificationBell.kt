@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
  * ler até ser tocada.
  */
 
+@Composable
 private fun severityColorOf(severity: AlertSeverity) = when (severity) {
   AlertSeverity.Danger -> Danger
   AlertSeverity.Warn -> Warn
@@ -233,6 +234,7 @@ private fun EntryRow(entry: NotificationEntry, now: Long, onEntry: (Notification
   }
 }
 
+@Composable
 private fun severityDotOf(severity: String) = when (severity) {
   "danger" -> Danger
   "warn" -> Warn
