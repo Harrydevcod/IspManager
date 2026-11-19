@@ -73,6 +73,33 @@ class NotificationFeedTest {
     assertEquals(listOf("pc:1", "pc:2"), NotificationFeed.decode(raw).map { it.uid })
   }
 
+  @Test fun `o historico vem dentro do resumo do PC`() {
+    val json = """
+      {"schemaVersion":1,"notifications":{"seenAt":"2026-11-19 09:30:00","items":[
+        {"uid":"pc:7","kind":"network_down","severity":"danger","title":"CIBEL_AP em baixo",
+         "detail":"192.168.88.21","tab":"painel","at":"2026-11-19 09:00:00","read":false}]}}
+    """.trimIndent()
+    val (items, seenAt) = NotificationFeed.parseSnapshot(json)!!
+    val row = items.single()
+    assertEquals("pc:7", row.uid)
+    assertEquals("pc", row.origin)
+    assertEquals("painel", row.tab)
+    assertEquals(false, row.read)
+    // As datas vêm como o SQLite as escreve, em UTC.
+    assertEquals(NotificationFeed.parseAt("2026-11-19 09:00:00"), row.at)
+    assertEquals(NotificationFeed.parseAt("2026-11-19 09:30:00"), seenAt)
+  }
+
+  @Test fun `um resumo sem o campo deixa ficar o que nasceu aqui`() {
+    assertNull(NotificationFeed.parseSnapshot("""{"schemaVersion":1,"companyName":"Novatech"}"""))
+    assertNull(NotificationFeed.parseSnapshot("nao e json"))
+  }
+
+  @Test fun `uma entrada sem titulo nao entra`() {
+    val json = """{"notifications":{"items":[{"uid":"pc:1"},{"uid":"pc:2","title":"Boa","at":"2026-11-19 09:00:00"}]}}"""
+    assertEquals(listOf("pc:2"), NotificationFeed.parseSnapshot(json)!!.first.map { it.uid })
+  }
+
   @Test fun `um ficheiro ilegivel le-se como lista vazia`() {
     assertEquals(emptyList<NotificationEntry>(), NotificationFeed.decode("isto nao e json"))
   }
