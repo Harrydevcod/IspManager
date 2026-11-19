@@ -122,7 +122,18 @@ class MainActivity : FragmentActivity() {
             // Photos are written to disk: off the main thread.
             app.scope.launch(Dispatchers.IO) { app.eventStore.add(kind, payload, photos) }
             toast("Guardado. Segue para o PC quando ele ligar ao telemóvel.")
-          }
+          },
+          onResend = { id ->
+            if (state.smsPermissionGranted) app.holder.resend(id)
+            else permissionLauncher.launch(Manifest.permission.SEND_SMS)
+          },
+          onResendAllFailed = {
+            if (state.smsPermissionGranted) app.holder.resendFailed()
+            else permissionLauncher.launch(Manifest.permission.SEND_SMS)
+          },
+          onNotificationRead = { app.holder.markNotificationRead(it.uid) },
+          onNotificationsSeen = { app.holder.markNotificationsSeen() },
+          onMarkAllNotificationsRead = { app.holder.markAllNotificationsRead() }
         )
       }
     }

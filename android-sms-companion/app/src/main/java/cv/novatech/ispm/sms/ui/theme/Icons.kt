@@ -14,6 +14,11 @@ import androidx.compose.ui.unit.dp
  * Only what the app uses; add a glyph by pasting its path data from lucide.
  */
 object Lucide {
+  val Bell = icon(
+    "bell",
+    "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9",
+    "M10.3 21a1.94 1.94 0 0 0 3.4 0"
+  )
   val LayoutDashboard = icon("layout-dashboard", rect(3, 3, 7, 9), rect(14, 3, 7, 5), rect(14, 12, 7, 9), rect(3, 16, 7, 5))
   val MapPin = icon(
     "map-pin",
