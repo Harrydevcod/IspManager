@@ -1,5 +1,5 @@
 import { Bell, Smartphone } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { parseDate } from '../../shared/date';
 
@@ -36,19 +36,39 @@ export type NotificationEntry = {
 
 export type NotificationFeed = { now: NotificationNow[]; history: NotificationEntry[]; unseen: number };
 
-export type NotificationBellProps = {
+/** O que o sino precisa de saber e de fazer, igual em qualquer sítio onde apareça. */
+export type NotificationBellData = {
   feed: NotificationFeed | null;
-  collapsed: boolean;
-  tipProps: (label: string) => Record<string, unknown>;
   onOpen: () => void;
   onNavigate: (section: string, focus: string | null) => void;
   onRead: (id: number) => void;
   onReadAll: () => void;
 };
 
-const TONE_ORDER = { danger: 0, warn: 1, info: 2 } as const;
+export type NotificationBellProps = NotificationBellData & {
+  /** Menu lateral recolhido: o rótulo some e o título sai (fica a legenda do rail). */
+  collapsed?: boolean;
+  tipProps?: (label: string) => Record<string, unknown>;
+  /** Só o ícone, para caber no canto de um cartão. */
+  compact?: boolean;
+};
 
-export function NotificationBell({ feed, collapsed, tipProps, onOpen, onNavigate, onRead, onReadAll }: NotificationBellProps) {
+/**
+ * Os dados do sino, para ele aparecer em mais do que um sítio sem ninguém ter
+ * de os passar de mão em mão. O painel da operação usa-o tal como a barra.
+ */
+const NotificationsContext = createContext<NotificationBellData | null>(null);
+export const NotificationsProvider = NotificationsContext.Provider;
+export function useNotifications(): NotificationBellData | null {
+  return useContext(NotificationsContext);
+}
+
+const TONE_ORDER = { danger: 0, warn: 1, info: 2 } as const;
+const noTip = () => ({});
+
+export function NotificationBell({
+  feed, collapsed = false, tipProps = noTip, compact = false, onOpen, onNavigate, onRead, onReadAll
+}: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -98,7 +118,7 @@ export function NotificationBell({ feed, collapsed, tipProps, onOpen, onNavigate
       <button
         type="button"
         ref={buttonRef}
-        className={`bell-trigger${open ? ' is-open' : ''}`}
+        className={`bell-trigger${compact ? ' is-compact' : ''}${open ? ' is-open' : ''}`}
         onClick={toggle}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -107,7 +127,7 @@ export function NotificationBell({ feed, collapsed, tipProps, onOpen, onNavigate
         {...tipProps(count > 0 ? `Notificações · ${count}` : 'Notificações')}
       >
         <Bell size={16} aria-hidden />
-        <span className="nav-label">Notificações</span>
+        {!compact && <span className="nav-label">Notificações</span>}
         {count > 0 && (
           <span className={`nav-counter nav-counter-${tone}`} aria-hidden="true">{count > 9 ? '9+' : count}</span>
         )}

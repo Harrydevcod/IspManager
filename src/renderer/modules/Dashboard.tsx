@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, CalendarClock, CheckCircle2, MessageCircle, ShieldCheck, TrendingUp, UsersRound, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
-import { Badge, Button, Card, EmptyState, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton } from '../components';
+import { Badge, Button, Card, EmptyState, ErrorRetry, MetricCard, MetricGrid, NotificationBell, RevenueBars, Skeleton, useNotifications } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
@@ -45,6 +45,7 @@ export function Dashboard({
 }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const bell = useNotifications();
 
   const loadSummary = useCallback(() => {
     return authFetch('http://127.0.0.1:3001/api/dashboard/summary')
@@ -139,7 +140,11 @@ export function Dashboard({
         aria-label="Estado operacional"
       >
         <div className="operations-brief-main">
-          <p className="eyebrow">Comando operacional</p>
+          <div className="operations-brief-head">
+            <p className="eyebrow">Comando operacional</p>
+            {/* O mesmo sino da barra lateral: quem vive no Painel tem-no à mão. */}
+            {bell && <NotificationBell {...bell} compact />}
+          </div>
           {summary ? (
             briefNeedsAttention ? (
               <div className="operations-alert-strip" aria-label={`${attentionCount} sinais operacionais`}>

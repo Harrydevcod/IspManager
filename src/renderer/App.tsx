@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, NotificationBell, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
-import type { NotificationFeed } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, NotificationBell, NotificationsProvider, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
+import type { NotificationBellData, NotificationFeed } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from './lib/networkPresence';
@@ -394,8 +394,18 @@ function AppShell() {
 
   const healthLabel = health === 'checking' ? 'A verificar API' : health === 'online' ? 'API local online' : 'API offline';
 
+  // Os dados do sino num só sítio: a barra lateral e o Comando operacional
+  // mostram o mesmo, sem ninguém os passar de mão em mão.
+  const notificationBell = useMemo<NotificationBellData>(() => ({
+    feed: notifications,
+    onOpen: openNotifications,
+    onNavigate: openNotificationTarget,
+    onRead: readNotification,
+    onReadAll: readAllNotifications
+  }), [notifications, openNotifications, openNotificationTarget, readNotification, readAllNotifications]);
+
   return (
-    <>
+    <NotificationsProvider value={notificationBell}>
       <a className="skip-link" href="#app-content">Saltar para conteúdo</a>
       <main className="app-shell" data-nav={navCollapsed ? 'rail' : undefined}>
       <aside className="sidebar" onScroll={() => setRailTip(null)}>
@@ -434,15 +444,7 @@ function AppShell() {
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
 
-        <NotificationBell
-          feed={notifications}
-          collapsed={navCollapsed}
-          tipProps={railTipProps}
-          onOpen={openNotifications}
-          onNavigate={openNotificationTarget}
-          onRead={readNotification}
-          onReadAll={readAllNotifications}
-        />
+        <NotificationBell {...notificationBell} collapsed={navCollapsed} tipProps={railTipProps} />
 
         <nav className="nav-list" aria-label="Principal">
           {visibleSections.map((item) => {
@@ -621,7 +623,7 @@ function AppShell() {
 
         <ThemeOnboarding />
       </main>
-    </>
+    </NotificationsProvider>
   );
 }
 

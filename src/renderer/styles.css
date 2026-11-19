@@ -7457,6 +7457,29 @@ button.danger:disabled {
 
 .bell-trigger .nav-label { flex: 1; text-align: left; }
 
+/* No canto de um cartão: só o ícone, com o número por cima. */
+.bell-trigger.is-compact {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+.bell-trigger.is-compact .nav-counter {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  border: 1px solid var(--surface);
+}
+
 .bell-trigger:hover,
 .bell-trigger:focus-visible,
 .bell-trigger.is-open {
@@ -7616,4 +7639,12 @@ button.danger:disabled {
 /* Janela estreita: o painel ocupa a largura toda, com 16 px de margem. */
 @media (max-width: 520px) {
   .bell-panel { left: 16px !important; right: 16px; width: auto; }
+}
+
+/* Cabeçalho do Comando operacional: o título à esquerda, o sino no canto. */
+.operations-brief-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
 }

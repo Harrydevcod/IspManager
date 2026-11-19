@@ -86,6 +86,20 @@ describe('sino de notificações', () => {
     expect(bell(container).querySelector('.nav-counter')?.textContent).toBe('2');
   });
 
+  test('o mesmo sino aparece no Comando operacional', async () => {
+    const container = await mountApp();
+    const card = container.querySelector('.operations-brief');
+    const compact = card?.querySelector<HTMLButtonElement>('.bell-trigger.is-compact');
+    expect(compact).not.toBeNull();
+    expect(compact?.getAttribute('aria-label')).toBe('Notificações, 2');
+    // Só o ícone: o rótulo é da barra lateral.
+    expect(compact?.querySelector('.nav-label')).toBeNull();
+
+    await act(async () => { compact?.click(); });
+    expect(posted).toContain('/seen');
+    expect(panel()?.textContent).toContain('3 faturas críticas');
+  });
+
   test('abrir o painel marca como visto e mostra as duas secções', async () => {
     const container = await mountApp();
     await act(async () => { bell(container).click(); });
