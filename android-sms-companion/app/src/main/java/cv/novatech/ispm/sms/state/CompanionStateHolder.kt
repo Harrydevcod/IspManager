@@ -1,10 +1,12 @@
 package cv.novatech.ispm.sms.state
 
+import cv.novatech.ispm.sms.NotificationLog
 import cv.novatech.ispm.sms.PairingStore
 import cv.novatech.ispm.sms.RequestRules
 import cv.novatech.ispm.sms.SmsRequest
 import cv.novatech.ispm.sms.SmsRequestStore
 import cv.novatech.ispm.sms.dashboard.Dashboard
+import cv.novatech.ispm.sms.events.FieldEvent
 import cv.novatech.ispm.sms.net.localIpv4
 import cv.novatech.ispm.sms.pairing.PendingPairing
 import kotlinx.coroutines.CoroutineScope
@@ -12,6 +14,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * App-wide state. Lives in [cv.novatech.ispm.sms.IspmSmsApp], not in the
@@ -26,7 +30,11 @@ class CompanionStateHolder(
   private val send: (SmsRequest, Int?) -> Unit,
   /** Waits for a SIM with room (SendScheduler), then calls back with it. Default: send now on the chosen SIM. */
   private val dispatch: suspend (SmsRequest, (Int?) -> Boolean) -> Unit = { _, go -> go(null) },
-  private val now: () -> Long = System::currentTimeMillis
+  private val now: () -> Long = System::currentTimeMillis,
+  /** Onde fica o histórico do sino. Nulo nos testes que só olham para as regras. */
+  private val notificationLog: NotificationLog? = null,
+  /** O que o telemóvel manda ao PC quando o sino muda deste lado. */
+  private val onNotificationEvent: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
   private val _state = MutableStateFlow(CompanionUiState())
   val state: StateFlow<CompanionUiState> = _state
@@ -39,6 +47,7 @@ class CompanionStateHolder(
   @Volatile private var lastDesktopAt: Long? = null
   @Volatile private var lastRejectedAt: Long? = null
   @Volatile private var syncRequestedAt: Long? = null
+  @Volatile private var relay = RelayHealth()
   @Volatile var pendingPairing: PendingPairing? = null
     private set
   /** Requests waiting for their SIM: 0 = queued behind another, else when it can go. */
@@ -48,7 +57,52 @@ class CompanionStateHolder(
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
     val code = pendingPairing?.let { PairingCode(it.sas, it.desktopName, it.phoneConfirmed) }
-    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt, code)
+    _state.value = buildUiState(
+      snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard,
+      dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt, code,
+      relay.failingSince, relay.lastError,
+      notificationLog?.list().orEmpty(), notificationLog?.seenAt()
+    )
+  }
+
+  fun setRelayHealth(value: RelayHealth) { relay = value; refresh() }
+
+  /** Uma entrada que nasce aqui; segue para o PC pelo canal do pareamento. */
+  fun appendNotification(entry: NotificationEntry) {
+    notificationLog?.append(entry)
+    onNotificationEvent(
+      FieldEvent.NOTIFICATION_NEW,
+      JSONObject()
+        .put("uid", entry.uid).put("kind", entry.kind).put("severity", entry.severity)
+        .put("title", entry.title).put("detail", entry.text ?: "").put("tab", entry.tab ?: "painel")
+    )
+    refresh()
+  }
+
+  /** Tocar numa entrada: lida já aqui, e o PC sabe no próximo tick. */
+  fun markNotificationRead(uid: String) {
+    notificationLog?.markRead(uid)
+    onNotificationEvent(FieldEvent.NOTIFICATION_READ, JSONObject().put("uids", JSONArray(listOf(uid))))
+    refresh()
+  }
+
+  fun markAllNotificationsRead() {
+    val uids = notificationLog?.markAllRead().orEmpty()
+    if (uids.isNotEmpty()) onNotificationEvent(FieldEvent.NOTIFICATION_READ, JSONObject().put("uids", JSONArray(uids)))
+    refresh()
+  }
+
+  /** Abrir o painel apaga o número; cada entrada continua por ler até ser tocada. */
+  fun markNotificationsSeen() {
+    notificationLog?.markSeen(now())
+    onNotificationEvent(FieldEvent.NOTIFICATION_SEEN, JSONObject())
+    refresh()
+  }
+
+  /** Chegou um resumo com o histórico do PC. */
+  fun acceptNotificationFeed(items: List<NotificationEntry>, feedSeenAt: Long?) {
+    notificationLog?.acceptFeed(items, feedSeenAt)
+    refresh()
   }
 
   fun setServerRunning(value: Boolean) { serverRunning = value; refresh() }
@@ -132,6 +186,24 @@ class CompanionStateHolder(
   fun rearm(ids: List<String>) = ids.forEach { undo.arm(it) { refresh() } }
 
   fun reject(id: String) { requestStore.updateStatus(id, "rejected", "Rejeitado no Android"); refresh() }
+
+  /**
+   * Reenviar um SMS falhado. Volta a "approved" e passa pela janela de "Anular",
+   * pelo orçamento do SIM e pela pausa da operadora, como um envio normal.
+   */
+  fun resend(id: String) {
+    val row = requestStore.update(id) { RequestRules.resend(it, now()) }
+    if (row?.status == "approved") undo.arm(id) { refresh() }
+    refresh()
+  }
+
+  /** Reenvia tudo o que falhou nas últimas 24 h. */
+  fun resendFailed() {
+    val day = 24L * 60 * 60 * 1000
+    _state.value.history
+      .filter { it.status == "failed" && now() - (it.updatedAt ?: 0L) < day }
+      .forEach { resend(it.id) }
+  }
 
   /** The scheduler calls back while waiting, so the queue shows "aguarda janela do SIM". */
   fun setWaiting(id: String, until: Long?) {

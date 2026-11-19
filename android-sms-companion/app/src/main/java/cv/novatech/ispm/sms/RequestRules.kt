@@ -42,6 +42,24 @@ object RequestRules {
     return row.copy(status = "sent", error = null, sentAt = now, updatedAt = now)
   }
 
+  /**
+   * Reenviar à mão um SMS que falhou: volta a "approved" e segue o caminho
+   * normal — janela de "Anular", orçamento do SIM, pausa da operadora. O id
+   * é o mesmo, porque o `POST /requests` do PC é idempotente por id e um
+   * pedido novo apareceria lá como um segundo SMS.
+   *
+   * Três chegam: insistir contra um número inválido nunca o torna válido.
+   */
+  const val MAX_RESENDS = 3
+
+  fun resend(row: SmsRequest, now: Long): SmsRequest {
+    if (row.status != "failed" || row.attempts >= MAX_RESENDS) return row
+    return row.copy(
+      status = "approved", error = null, sentAt = null, deliveredAt = null,
+      approvedAt = now, updatedAt = now, attempts = row.attempts + 1
+    )
+  }
+
   fun onDelivered(row: SmsRequest, now: Long): SmsRequest =
     if (row.deliveredAt != null) row else row.copy(deliveredAt = now, updatedAt = now)
 

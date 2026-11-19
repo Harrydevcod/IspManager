@@ -48,6 +48,15 @@ fun StatusCard(state: CompanionUiState, onForget: () -> Unit) {
         if (state.serverRunning) "A ouvir ${state.listenAddress}" else "Parado. Reabra a app.",
         detailColor = if (state.serverRunning) TextMuted else Warn
       )
+      // Só aparece quando há problema: o relé a funcionar não é notícia.
+      if (state.relayFailingSince != null) {
+        GroupDivider()
+        GroupRow(
+          "Relé",
+          listOfNotNull("Sem ligação ${ago(now - state.relayFailingSince)}", state.relayLastError).joinToString(" · "),
+          detailColor = Danger
+        )
+      }
       GroupDivider()
       GroupRow("Permissão de SMS") {
         Text(

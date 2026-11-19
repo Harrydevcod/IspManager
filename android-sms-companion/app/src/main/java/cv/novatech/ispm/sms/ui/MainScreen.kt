@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cv.novatech.ispm.sms.RequestRules
 import cv.novatech.ispm.sms.state.CompanionUiState
 import cv.novatech.ispm.sms.state.DesktopLink
 import cv.novatech.ispm.sms.state.RequestUi
@@ -86,7 +87,7 @@ fun RequestsScreen(
 }
 
 @Composable
-fun HistoryScreen(state: CompanionUiState) {
+fun HistoryScreen(state: CompanionUiState, onResend: (String) -> Unit = {}) {
   LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding) {
     item { ScreenTitle("Histórico", "Últimos 30 dias") }
     if (state.history.isEmpty()) {
@@ -94,7 +95,7 @@ fun HistoryScreen(state: CompanionUiState) {
     }
     items(state.history, key = { "h-" + it.id }) { r ->
       Column(Modifier.animateItem()) {
-        HistoryRow(r)
+        HistoryRow(r, onResend)
         Hairline()
       }
     }
@@ -159,7 +160,7 @@ private fun BatteryBanner(onRequest: () -> Unit) =
 private val timeFormat = SimpleDateFormat("dd/MM HH:mm", Locale("pt", "PT"))
 
 @Composable
-private fun HistoryRow(r: RequestUi) {
+private fun HistoryRow(r: RequestUi, onResend: (String) -> Unit = {}) {
   val (label, color) = when {
     r.status == "sent" && r.deliveredAt != null -> "Entregue" to Success
     r.status == "sent" -> "Enviado" to TextSecondary
@@ -180,7 +181,13 @@ private fun HistoryRow(r: RequestUi) {
       r.updatedAt?.let { Text(" · ${timeFormat.format(Date(it))}", color = TextMuted, style = MaterialTheme.typography.labelSmall) }
     }
     if (r.status == "failed" && r.error != null) {
-      Text(r.error, color = Danger, style = MaterialTheme.typography.bodySmall)
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(r.error, color = Danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        // Três chegam: insistir contra um número inválido nunca o torna válido.
+        if (r.attempts < RequestRules.MAX_RESENDS) {
+          IspmButton("Reenviar", { onResend(r.id) }, variant = ButtonVariant.GHOST)
+        }
+      }
     }
   }
 }

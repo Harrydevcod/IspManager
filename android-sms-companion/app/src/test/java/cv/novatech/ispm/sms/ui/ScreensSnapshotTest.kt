@@ -22,6 +22,9 @@ import cv.novatech.ispm.sms.state.PairingCode
 import cv.novatech.ispm.sms.state.RequestUi
 import cv.novatech.ispm.sms.state.SyncRules
 import cv.novatech.ispm.sms.state.ThemePref
+import cv.novatech.ispm.sms.state.NotificationEntry
+import cv.novatech.ispm.sms.state.alertsFor
+import cv.novatech.ispm.sms.ui.components.NotificationList
 import cv.novatech.ispm.sms.ui.components.StatusCard
 import cv.novatech.ispm.sms.ui.dashboard.DashboardScreen
 import cv.novatech.ispm.sms.ui.theme.Bg
@@ -130,6 +133,36 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
       req("h7", "Carla Pires", "maintenance_notice", status = "sent")
     )
   )
+
+  /** O histórico do sino: por ler em cima, lidas em baixo, uma delas do telemóvel. */
+  private val entries = listOf(
+    NotificationEntry("pc:1", "network_down", "danger", "CIBEL_AP em baixo", "192.168.88.21", "painel", now - 12 * 60_000),
+    NotificationEntry("pc:2", "job_error", "danger", "Tarefa sms_poll falhou", "fetch failed", "ajustes", now - 95 * 60_000),
+    NotificationEntry("abc", "sms_failed", "warn", "SMS para Rui Monteiro falhou", "Sem rede", "historico", now - 4 * 3_600_000, origin = "phone", requestId = "h2"),
+    NotificationEntry("pc:3", "outage_notice", "info", "Aviso de avaria enviado a 14 clientes", "Monte Sossego", "painel", now - 26 * 3_600_000, read = true),
+    NotificationEntry("pc:4", "suspensions_upcoming", "warn", "6 suspensões nos próximos 7 dias", null, "painel", now - 28 * 3_600_000, read = true)
+  )
+
+  /** O sino com número no topo de um ecrã, e o painel por dentro. */
+  @Test fun notificacoes() {
+    val comAlertas = paired.copy(
+      batteryExempt = false,
+      notifications = entries,
+      notificationsSeenAt = now - 2 * 3_600_000
+    )
+    shot("sino-com-alertas") {
+      CompanionApp(
+        comAlertas, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+        themePref = ThemePref.SYSTEM, onToggleTheme = {}, initialTab = Tab.HISTORICO
+      )
+    }
+    shot("notificacoes") {
+      NotificationList(alertsFor(comAlertas, now), entries, now)
+    }
+    shot("notificacoes-vazio") {
+      NotificationList(emptyList(), emptyList(), now)
+    }
+  }
 
   /** The whole app as the owner sees it, navigation bar included, on each tab. */
   @Test fun app() {

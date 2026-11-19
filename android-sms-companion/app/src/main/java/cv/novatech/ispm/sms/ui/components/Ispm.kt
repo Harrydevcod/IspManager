@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +77,14 @@ fun IspmButton(
   }
 }
 
+/**
+ * O que vai no fim da fila de ações de todos os topos — hoje, o sino.
+ *
+ * Fica num CompositionLocal para nenhum ecrã ter de mudar de assinatura só por
+ * causa disto: o `PairedApp` fornece-o uma vez e todos os topos o desenham.
+ */
+val LocalTopAction = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
+
 /** The top of every tab: same size, same place, an optional line under it and actions on the right. */
 @Composable
 fun ScreenTitle(title: String, line: String? = null, lineColor: Color = TextMuted, actions: @Composable RowScope.() -> Unit = {}) {
@@ -88,6 +97,7 @@ fun ScreenTitle(title: String, line: String? = null, lineColor: Color = TextMute
       }
     }
     actions()
+    LocalTopAction.current?.invoke()
   }
 }
 

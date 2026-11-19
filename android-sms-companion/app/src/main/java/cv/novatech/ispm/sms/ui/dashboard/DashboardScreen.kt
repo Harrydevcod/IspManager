@@ -89,6 +89,7 @@ private fun Header(title: String, line: Pair<String, Color>, sync: SyncPhase, on
     }
     if (onToggleTheme != null) ThemeToggle(onToggleTheme)
     SyncButton(sync, onSync)
+    LocalTopAction.current?.invoke()
   }
 }
 

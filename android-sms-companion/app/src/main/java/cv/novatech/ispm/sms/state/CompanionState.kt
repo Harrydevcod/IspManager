@@ -22,7 +22,9 @@ data class RequestUi(
   val updatedAt: Long? = null,
   val deliveredAt: Long? = null,
   /** Approved but waiting for a SIM with room: 0 = behind another request, else when it can go. */
-  val waitUntil: Long? = null
+  val waitUntil: Long? = null,
+  /** Reenvios já feitos à mão: ao terceiro o botão desaparece. */
+  val attempts: Int = 0
 )
 
 data class SimOption(val subscriptionId: Int, val label: String)
@@ -53,7 +55,15 @@ data class CompanionUiState(
   /** "Sincronizar" pressed; see [SyncRules]. In memory: resets with the process. */
   val syncRequestedAt: Long? = null,
   /** A v2 QR read: the code the PC must show too. In memory, 2 min. */
-  val pairingCode: PairingCode? = null
+  val pairingCode: PairingCode? = null,
+  /** Desde quando o relé não responde (null = a responder, ou sem relé). */
+  val relayFailingSince: Long? = null,
+  /** A razão da última falha do relé, nas palavras que os Ajustes mostram. */
+  val relayLastError: String? = null,
+  /** O histórico do sino, já com o feed do PC e o que nasceu aqui juntos. */
+  val notifications: List<NotificationEntry> = emptyList(),
+  /** Quando o painel foi aberto pela última vez: o número conta o que nasceu depois. */
+  val notificationsSeenAt: Long? = null
 )
 
 data class PairingCode(val sas: String, val desktopName: String, val confirmedOnPhone: Boolean = false)
@@ -85,7 +95,8 @@ private fun SmsRequest.toUi(sending: Boolean, waitUntil: Long?) = RequestUi(
   id = id, clientName = clientName, toPhone = toPhone, eventType = eventType,
   body = body, status = status, error = error, sending = sending,
   inFlight = status == "sending", updatedAt = updatedAt, deliveredAt = deliveredAt,
-  waitUntil = waitUntil.takeIf { status == "approved" }
+  waitUntil = waitUntil.takeIf { status == "approved" },
+  attempts = attempts
 )
 
 fun buildUiState(
@@ -101,7 +112,11 @@ fun buildUiState(
   lastRejectedAt: Long? = null,
   waiting: Map<String, Long> = emptyMap(),
   syncRequestedAt: Long? = null,
-  pairingCode: PairingCode? = null
+  pairingCode: PairingCode? = null,
+  relayFailingSince: Long? = null,
+  relayLastError: String? = null,
+  notifications: List<NotificationEntry> = emptyList(),
+  notificationsSeenAt: Long? = null
 ): CompanionUiState {
   val ui = requests.map { it.toUi(sendingIds.contains(it.id), waiting[it.id]) }
   val pending = ui.filter { it.status in OPEN }
@@ -128,6 +143,10 @@ fun buildUiState(
     lastDesktopAt = lastDesktopAt,
     lastRejectedAt = lastRejectedAt,
     syncRequestedAt = syncRequestedAt,
-    pairingCode = pairingCode
+    pairingCode = pairingCode,
+    relayFailingSince = relayFailingSince,
+    relayLastError = relayLastError,
+    notifications = notifications,
+    notificationsSeenAt = notificationsSeenAt
   )
 }

@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +31,14 @@ import cv.novatech.ispm.sms.events.FieldEvent
 import cv.novatech.ispm.sms.state.CompanionUiState
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.state.ThemePref
+import cv.novatech.ispm.sms.state.Alert
+import cv.novatech.ispm.sms.state.AlertAction
+import cv.novatech.ispm.sms.state.NotificationEntry
+import cv.novatech.ispm.sms.state.alertsFor
 import cv.novatech.ispm.sms.ui.components.Hairline
+import cv.novatech.ispm.sms.ui.components.LocalTopAction
+import cv.novatech.ispm.sms.ui.components.NotificationBell
+import cv.novatech.ispm.sms.ui.components.rememberNow
 import cv.novatech.ispm.sms.ui.dashboard.DashboardScreen
 import cv.novatech.ispm.sms.ui.theme.*
 import org.json.JSONObject
@@ -69,7 +77,12 @@ fun CompanionApp(
   onToggleTheme: (() -> Unit)? = null,
   initialTab: Tab? = null,
   onConfirmPairing: () -> Unit = {},
-  onCancelPairing: () -> Unit = {}
+  onCancelPairing: () -> Unit = {},
+  onResend: (String) -> Unit = {},
+  onResendAllFailed: () -> Unit = {},
+  onNotificationRead: (NotificationEntry) -> Unit = {},
+  onNotificationsSeen: () -> Unit = {},
+  onMarkAllNotificationsRead: () -> Unit = {}
 ) {
   Box(Modifier.fillMaxSize().background(Bg)) {
     // Re-pairing from a paired phone goes through "Esquecer e parear de novo"; the code can't show otherwise.
@@ -84,7 +97,8 @@ fun CompanionApp(
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
         onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange,
-        pendingEvents, onFieldEvent, onRejectAll, onSync, themePref, onThemeChange, onToggleTheme, initialTab
+        pendingEvents, onFieldEvent, onRejectAll, onSync, themePref, onThemeChange, onToggleTheme, initialTab,
+        onResend, onResendAllFailed, onNotificationRead, onNotificationsSeen, onMarkAllNotificationsRead
       )
     }
   }
@@ -111,17 +125,68 @@ private fun PairedApp(
   themePref: ThemePref,
   onThemeChange: (ThemePref) -> Unit,
   onToggleTheme: (() -> Unit)?,
-  initialTab: Tab?
+  initialTab: Tab?,
+  onResend: (String) -> Unit = {},
+  onResendAllFailed: () -> Unit = {},
+  onNotificationRead: (NotificationEntry) -> Unit = {},
+  onNotificationsSeen: () -> Unit = {},
+  onMarkAllNotificationsRead: () -> Unit = {}
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(initialTab ?: if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
+  val now = rememberNow()
+  val alerts = remember(state, now) { alertsFor(state, now) }
+
+  /** Cada ação do sino é a que o ecrã respetivo já faz; aqui só se liga. */
+  fun handle(action: AlertAction) {
+    when (action) {
+      AlertAction.ApproveAll -> onApproveAll()
+      AlertAction.ResendAllFailed -> onResendAllFailed()
+      AlertAction.OpenPedidos -> tab = Tab.PEDIDOS
+      AlertAction.OpenHistorico -> tab = Tab.HISTORICO
+      AlertAction.OpenPainel -> tab = Tab.PAINEL
+      AlertAction.OpenAjustes -> tab = Tab.DEFINICOES
+      AlertAction.RequestSmsPermission -> onRequestPermission()
+      AlertAction.RequestBatteryExemption -> onRequestBatteryExemption()
+      AlertAction.Sync -> onSync()
+      // Desemparelhar é destrutivo: passa pela confirmação que os Ajustes já têm.
+      AlertAction.Unpair -> tab = Tab.DEFINICOES
+      AlertAction.None -> Unit
+    }
+  }
+
+  fun openEntry(entry: NotificationEntry) {
+    onNotificationRead(entry)
+    when (entry.tab) {
+      "pedidos" -> tab = Tab.PEDIDOS
+      "historico" -> tab = Tab.HISTORICO
+      "ajustes" -> tab = Tab.DEFINICOES
+      else -> tab = Tab.PAINEL
+    }
+  }
+
+  val bell: @Composable () -> Unit = {
+    NotificationBell(
+      alerts = alerts,
+      entries = state.notifications,
+      seenAt = state.notificationsSeenAt,
+      now = now,
+      onAction = ::handle,
+      onEntry = ::openEntry,
+      onMarkAllRead = onMarkAllNotificationsRead,
+      onOpened = onNotificationsSeen,
+      onResend = onResend
+    )
+  }
+
+  CompositionLocalProvider(LocalTopAction provides bell) {
   Column(Modifier.fillMaxSize()) {
     Box(Modifier.weight(1f).fillMaxWidth().statusBarsPadding()) {
       when (tab) {
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt, state.syncRequestedAt, onSync, onToggleTheme)
         Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen, pendingEvents, onFieldEvent)
         Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onRejectAll)
-        Tab.HISTORICO -> HistoryScreen(state)
+        Tab.HISTORICO -> HistoryScreen(state, onResend)
         Tab.DEFINICOES -> SettingsScreen(
           state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing,
           onLockEnabledChange, themePref, onThemeChange
@@ -167,5 +232,6 @@ private fun PairedApp(
         )
       }
     }
+  }
   }
 }
