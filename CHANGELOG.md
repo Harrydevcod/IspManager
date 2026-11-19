@@ -4,6 +4,25 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.74](https://github.com/Harrydevcod/IspManager/releases/tag/v2.74.0) — 2026-11-19
+
+### Adicionado
+- **Sino de notificações.** Os avisos estavam espalhados — contadores na barra, grupo "Alertas" da paleta, o painel "Estado da operação" escondido dentro de Relatórios, banners — e nada guardava o que já tinha acontecido. Agora há um sítio só.
+  - **Onde.** No topo da barra lateral, por baixo de "Procurar", e também no canto do cartão "Comando operacional" do Painel. É o mesmo sino: mesmo número, mesmo painel, mesmo estado de lido. Atalho `Ctrl+Shift+N`.
+  - **"Agora"** é o que precisa de atenção já: os achados vermelhos e âmbar do Estado da operação (administrador e operador) mais os contadores do painel — pagamentos em atraso, assistência, OS técnicas, stock baixo —, que o técnico também vê. Cada um abre a secção que o trata.
+  - **"Anteriores"** é o histórico: a sonda a derrubar uma torre, um SMS ou WhatsApp que falhou, uma tarefa que rebentou, um aviso de avaria ou de manutenção que saiu, as suspensões a chegar. Lido e "visto até" são de cada utilizador: o que um lê não desaparece do sino dos outros.
+  - **Limpeza.** As entradas com mais de 90 dias saem sozinhas.
+- **O mesmo histórico no telemóvel (app ISPM SMS 0.13).** O resumo que o PC já envia passa a levar as últimas 50 entradas, e o que nasce ou se lê no telemóvel volta pelo canal do pareamento. "Lida" nunca volta a "por ler" e o "visto até" nunca recua. O telemóvel lê como o administrador que confirmou o pareamento.
+
+### Na app ISPM SMS 0.13
+- **Sino no topo de todos os ecrãs**, com as mesmas duas secções e a ação de cada aviso à mão: aprovar os SMS à espera, ver as falhas, dar a permissão, isentar da bateria, sincronizar.
+- **Aviso quando o relé fica sem ligação.** Até aqui "não tinha nada para mim" e "não consegui falar com ele" davam o mesmo resultado: o PC deixava de chegar ao telemóvel em silêncio. Agora, cinco minutos sem resposta valem um aviso — uma vez por queda —, e o regresso também se anuncia. Com o relé em baixo, pergunta-se de 60 em 60 s em vez de 15, para não gastar bateria contra uma parede.
+- **Reenviar um SMS falhado**, no Histórico e no sino. Passa pela janela de "Anular", pelo orçamento do SIM e pela pausa da operadora, como um envio normal, e reutiliza o mesmo pedido — no PC não aparece um segundo SMS. No máximo três vezes: insistir contra um número inválido nunca o torna válido.
+- Os tipos de SMS que a 2.73 trouxe (lembrete, atraso prolongado, avaria, reposto, manutenção, mensagem geral) deixam de aparecer como "Teste" e ganham a etiqueta certa.
+
+### Corrigido
+- **Um SMS reenviado no telemóvel ficava "falhou" para sempre no PC.** O ISPM só perguntava pelas linhas por aprovar, aprovadas e enviadas à espera de entrega; uma linha falhada nunca mais era consultada. Agora volta a perguntar durante 48 horas, e a linha passa a "enviado" quando o telemóvel o conseguir.
+
 ## [2.73](https://github.com/Harrydevcod/IspManager/releases/tag/v2.73.0) — 2026-11-16
 
 ### Adicionado
