@@ -107,6 +107,7 @@ export function NotificationBell({ feed, collapsed, tipProps, onOpen, onNavigate
         {...tipProps(count > 0 ? `Notificações · ${count}` : 'Notificações')}
       >
         <Bell size={16} aria-hidden />
+        <span className="nav-label">Notificações</span>
         {count > 0 && (
           <span className={`nav-counter nav-counter-${tone}`} aria-hidden="true">{count > 9 ? '9+' : count}</span>
         )}

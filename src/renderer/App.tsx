@@ -405,15 +405,6 @@ function AppShell() {
             <strong>ISPM</strong>
             <span>Operação ISP</span>
           </div>
-          <NotificationBell
-            feed={notifications}
-            collapsed={navCollapsed}
-            tipProps={railTipProps}
-            onOpen={openNotifications}
-            onNavigate={openNotificationTarget}
-            onRead={readNotification}
-            onReadAll={readAllNotifications}
-          />
           <button
             type="button"
             className="brand-toggle"
@@ -442,6 +433,16 @@ function AppShell() {
           <span>Procurar</span>
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
+
+        <NotificationBell
+          feed={notifications}
+          collapsed={navCollapsed}
+          tipProps={railTipProps}
+          onOpen={openNotifications}
+          onNavigate={openNotificationTarget}
+          onRead={readNotification}
+          onReadAll={readAllNotifications}
+        />
 
         <nav className="nav-list" aria-label="Principal">
           {visibleSections.map((item) => {
