@@ -1,5 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { loadIncidents } from './network-incidents';
+import { recordNotification } from './notifications';
 import { enqueueWhatsapp } from './whatsapp-outbox';
 import { enqueueSmsNotification } from './sms-outbox';
 import { outageSmsBody, outageSmsEvent, smsChannelActive } from './sms-notices';
@@ -138,7 +139,21 @@ export async function runOutageNoticesIfDue(now: Date = new Date()): Promise<Out
     const done = notified.all(incident.key) as Array<{ clientId: number; kind: Kind; channel: 'whatsapp' | 'sms'; outboxId: number; status: string | null }>;
     const has = (clientId: number, kind: Kind) => done.some((row) => row.clientId === clientId && row.kind === kind);
     if (incident.status === 'open' && (incident.durationSeconds ?? 0) >= delayMinutes() * 60) {
+      const before = counts.outage;
       for (const client of incident.clients) if (!has(client.clientId, 'outage')) send(incident.key, client.clientId, 'outage', incident.zone);
+      const sent = counts.outage - before;
+      // Um aviso sai sozinho, sem ninguém carregar em nada: o sino é o único sítio onde se dá por ele.
+      if (sent > 0) {
+        recordNotification(db, {
+          uid: `outage:${incident.key}`,
+          kind: 'outage_notice',
+          severity: 'info',
+          title: `Aviso de avaria enviado a ${sent} cliente${sent === 1 ? '' : 's'}`,
+          detail: incident.zone,
+          section: 'topology',
+          focus: 'incidents'
+        });
+      }
     } else if (incident.status === 'resolved') {
       // O reposto vai a quem teve o aviso, mesmo que tenha deixado de pender do equipamento.
       for (const row of done) {

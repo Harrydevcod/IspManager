@@ -38,3 +38,4 @@ export * from './ShortcutsDialog';
 export * from './ReleaseNotesDialog';
 export * from './AuthGate';
 export * from './LicenseActivation';
+export * from './NotificationBell';

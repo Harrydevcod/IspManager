@@ -1190,3 +1190,28 @@ export const fupSettingsHistory = sqliteTable('fup_settings_history', {
   changedAt: text('changed_at').notNull().default("(datetime('now'))"),
   reason: text('reason')
 });
+
+/** Sino de notificações: histórico comum ao PC e ao telemóvel (0112). */
+export const notifications = sqliteTable('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  uid: text('uid').notNull().unique(),
+  origin: text('origin', { enum: ['pc', 'phone'] }).notNull().default('pc'),
+  kind: text('kind').notNull(),
+  severity: text('severity', { enum: ['info', 'warn', 'danger'] }).notNull(),
+  title: text('title').notNull(),
+  detail: text('detail'),
+  section: text('section'),
+  focus: text('focus'),
+  createdAt: text('created_at').notNull().default("(datetime('now'))")
+});
+
+export const notificationReads = sqliteTable('notification_reads', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  notificationId: integer('notification_id').notNull().references(() => notifications.id, { onDelete: 'cascade' }),
+  readAt: text('read_at').notNull()
+}, (table) => [primaryKey({ columns: [table.userId, table.notificationId] })]);
+
+export const notificationSeen = sqliteTable('notification_seen', {
+  userId: integer('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  seenAt: text('seen_at').notNull()
+});

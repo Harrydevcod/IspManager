@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { clientsDownstreamOf } from './network-incidents';
+import { recordNotification } from './notifications';
 import { enqueueWhatsapp } from './whatsapp-outbox';
 import { enqueueSmsNotification } from './sms-outbox';
 import { smsChannelActive } from './sms-notices';
@@ -89,5 +90,17 @@ export function sendMaintenanceNotice(db: Database.Database, deviceId: number, w
     }
     return id;
   })();
+  const reached = recipients.length;
+  if (reached > 0) {
+    recordNotification(db, {
+      uid: `maintenance:${noticeId}`,
+      kind: 'maintenance_notice',
+      severity: 'info',
+      title: `Aviso de manutenção enviado a ${reached} cliente${reached === 1 ? '' : 's'}`,
+      detail: `${window.day} · ${window.start}–${window.end}`,
+      section: 'topology',
+      focus: 'incidents'
+    });
+  }
   return { noticeId, total, whatsapp: recipients.filter((r) => r.channel === 'whatsapp').length, sms: recipients.filter((r) => r.channel === 'sms').length, skipped };
 }

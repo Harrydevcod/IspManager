@@ -49,7 +49,7 @@ import { VaultPanel } from './settings/VaultPanel';
 import { FupSettingsPanel } from './settings/FupSettingsPanel';
 import { useAuth } from '../lib/auth';
 
-type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'fup' | 'backups' | 'jobs' | 'license' | 'vault';
+export type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'fup' | 'backups' | 'jobs' | 'license' | 'vault';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
@@ -83,8 +83,8 @@ type SettingsModuleProps = {
    * mais para sair do ensaio (RouterLiveDialog) — e não uma segunda porta.
    */
   scope?: 'all' | 'router';
-  /** Separador a abrir quando se chega de fora (o aviso do cofre abre o Cofre). */
-  initialTab?: 'vault';
+  /** Separador a abrir quando se chega de fora (o aviso do cofre abre o Cofre, o sino o separador do alerta). */
+  initialTab?: SettingsTab;
 };
 
 export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProps = {}) {

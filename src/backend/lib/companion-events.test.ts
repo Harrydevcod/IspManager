@@ -184,3 +184,59 @@ describe('receipt proposals', () => {
     expect(db.prepare('SELECT status FROM companion_events WHERE id = ?').get('evt-00000014')).toEqual({ status: 'rejected' });
   });
 });
+
+describe('o sino do telemóvel volta pelos eventos', () => {
+  let admin: number;
+
+  beforeEach(() => {
+    for (const table of ['notification_reads', 'notification_seen', 'notifications', 'users']) {
+      db.prepare(`DELETE FROM ${table}`).run();
+    }
+    admin = Number(db.prepare("INSERT INTO users (username, password_hash, role, full_name, active) VALUES ('ana', 'x', 'admin', 'Ana', 1)").run().lastInsertRowid);
+  });
+
+  const phoneEvent = (id: string, kind: string, payload: Record<string, unknown>): CompanionEvent => ({
+    id, kind, at: '2026-11-19T09:00:00.000Z', payload
+  });
+
+  const newNotice = (id: string, uid: string) => phoneEvent(id, 'notification_new', {
+    uid, kind: 'sms_failed', severity: 'warn', title: 'SMS para Ana falhou', detail: 'sem rede', tab: 'historico'
+  });
+
+  test('o que nasce no telemóvel entra no histórico do PC, uma só vez', async () => {
+    await mod.pullCompanionEventsIfDue(deps([newNotice('evt-00000101', 'phone:abc')]));
+    await mod.pullCompanionEventsIfDue(deps([newNotice('evt-00000102', 'phone:abc')]));
+
+    const rows = db.prepare("SELECT uid, origin, severity, section, focus FROM notifications").all();
+    expect(rows).toEqual([{ uid: 'phone:abc', origin: 'phone', severity: 'warn', section: 'settings', focus: 'sms' }]);
+    expect(db.prepare('SELECT status FROM companion_events WHERE id = ?').get('evt-00000102')).toEqual({ status: 'applied' });
+  });
+
+  test('o que se lê no telemóvel fica lido para quem confirmou o pareamento', async () => {
+    await mod.pullCompanionEventsIfDue(deps([newNotice('evt-00000103', 'phone:abc')]));
+    await mod.pullCompanionEventsIfDue(deps([phoneEvent('evt-00000104', 'notification_read', { uids: ['phone:abc', 'phone:nao-existe'] })]));
+
+    const read = db.prepare('SELECT user_id AS userId FROM notification_reads').all();
+    expect(read).toEqual([{ userId: admin }]);
+    // Um uid desconhecido não rebenta o evento.
+    expect(db.prepare('SELECT status FROM companion_events WHERE id = ?').get('evt-00000104')).toEqual({ status: 'applied' });
+  });
+
+  test('"visto até" nunca recua com o que vem do telemóvel', async () => {
+    await mod.pullCompanionEventsIfDue(deps([
+      { id: 'evt-00000105', kind: 'notification_seen', at: '2026-11-19T10:00:00.000Z', payload: {} }
+    ]));
+    await mod.pullCompanionEventsIfDue(deps([
+      { id: 'evt-00000106', kind: 'notification_seen', at: '2026-11-19T08:00:00.000Z', payload: {} }
+    ]));
+
+    expect(db.prepare('SELECT seen_at AS seenAt FROM notification_seen WHERE user_id = ?').get(admin))
+      .toEqual({ seenAt: '2026-11-19 10:00:00' });
+  });
+
+  test('uma notificação sem título é recusada', async () => {
+    await mod.pullCompanionEventsIfDue(deps([phoneEvent('evt-00000107', 'notification_new', { uid: 'phone:x', severity: 'warn' })]));
+    expect(db.prepare('SELECT status FROM companion_events WHERE id = ?').get('evt-00000107')).toEqual({ status: 'rejected' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM notifications').get()).toEqual({ n: 0 });
+  });
+});

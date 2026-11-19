@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { recordNotification } from './notifications';
 
 export type JobStatus = 'ok' | 'skipped' | 'error';
 
@@ -21,10 +22,23 @@ function classify(result: unknown): JobStatus {
 
 export function recordJobRun(job: string, status: JobStatus, durationMs: number, summary: unknown): void {
   const db = getSqliteDatabase();
-  db.prepare(`
+  const run = db.prepare(`
     INSERT INTO job_runs (job, status, duration_ms, summary_json)
     VALUES (?, ?, ?, ?)
   `).run(job, status, Math.round(durationMs), summary === undefined ? null : JSON.stringify(summary));
+  // Um job que rebenta é silencioso: só aparecia no painel de quem o fosse ver.
+  if (status === 'error') {
+    const error = summary && typeof summary === 'object' && 'error' in summary ? String((summary as { error: unknown }).error) : null;
+    recordNotification(db, {
+      uid: `job:${job}:${run.lastInsertRowid}`,
+      kind: 'job_error',
+      severity: 'danger',
+      title: `Tarefa ${job} falhou`,
+      detail: error,
+      section: 'settings',
+      focus: 'jobs'
+    });
+  }
   db.prepare(`
     DELETE FROM job_runs
     WHERE job = ? AND id NOT IN (

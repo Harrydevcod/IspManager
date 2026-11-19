@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { normalizeSmsPhone } from '../../shared/sms';
 import { recordSystemAuditEntry } from './audit';
 import { requestCompanionSnapshotPush } from './companion-sync';
+import { companionUserId, markNotificationReadByUid, markNotificationsSeen, recordNotification } from './notifications';
 import { readSecret } from './secrets';
 import { randomUUID } from 'node:crypto';
 import { signedFetch } from './sms-outbox';
@@ -61,6 +62,20 @@ const receiptProposal = z.object({
 const smsIn = z.object({
   from: z.string().trim().min(3).max(32),
   body: z.string().max(1600)
+});
+
+/** O sino do telemóvel: o que lá nasce, o que lá se lê e quando lá se abriu o painel. */
+const notificationNew = z.object({
+  uid: z.string().trim().min(1).max(80),
+  kind: z.string().trim().max(40),
+  severity: z.enum(['info', 'warn', 'danger']),
+  title: z.string().trim().min(1).max(200),
+  detail: z.string().trim().max(500).nullish(),
+  tab: z.enum(['painel', 'pedidos', 'historico', 'ajustes']).optional()
+});
+
+const notificationRead = z.object({
+  uids: z.array(z.string().trim().min(1).max(80)).min(1).max(200)
 });
 
 const eventSchema = z.object({
@@ -162,6 +177,36 @@ function apply(db: Database.Database, event: CompanionEvent, photos: Buffer[]): 
     db.prepare(`
       INSERT INTO sms_inbox (event_id, client_id, phone, body, received_at) VALUES (?, ?, ?, ?, ?)
     `).run(event.id, findClientIdByPhone(db, p.data.from), normalizeSmsPhone(p.data.from) || p.data.from, p.data.body, event.at);
+    return { status: 'applied' };
+  }
+  if (event.kind === 'notification_new') {
+    const p = notificationNew.safeParse(event.payload);
+    if (!p.success) return { status: 'rejected', reason: 'notificacao invalida' };
+    // O `uid` do telemóvel é a chave: o mesmo evento repetido não duplica a entrada.
+    recordNotification(db, {
+      uid: p.data.uid,
+      origin: 'phone',
+      kind: p.data.kind,
+      severity: p.data.severity,
+      title: p.data.title,
+      detail: p.data.detail ?? null,
+      section: p.data.tab === 'historico' ? 'settings' : null,
+      focus: p.data.tab === 'historico' ? 'sms' : null,
+      createdAt: event.at.replace('T', ' ').slice(0, 19)
+    });
+    return { status: 'applied' };
+  }
+  if (event.kind === 'notification_read') {
+    const p = notificationRead.safeParse(event.payload);
+    if (!p.success) return { status: 'rejected', reason: 'leitura invalida' };
+    const userId = companionUserId(db);
+    // Sem utilizador para representar não há onde gravar a leitura; o evento fica aceite na mesma.
+    if (userId) for (const uid of p.data.uids) markNotificationReadByUid(db, userId, uid, event.at.replace('T', ' ').slice(0, 19));
+    return { status: 'applied' };
+  }
+  if (event.kind === 'notification_seen') {
+    const userId = companionUserId(db);
+    if (userId) markNotificationsSeen(db, userId, event.at.replace('T', ' ').slice(0, 19));
     return { status: 'applied' };
   }
   return { status: 'rejected', reason: `tipo desconhecido: ${event.kind}` };

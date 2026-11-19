@@ -14,6 +14,7 @@ import { registerHealthRoutes } from './routes/health';
 import { registerClientRoutes } from './routes/clients';
 import { registerCustomerPortalRoutes } from './routes/customer-portal';
 import { registerMaintenanceNoticeRoutes } from './routes/maintenance-notices';
+import { registerNotificationRoutes } from './routes/notifications';
 import { registerUserRoutes } from './routes/users';
 import { registerDashboardRoutes } from './routes/dashboard';
 import { registerDocumentRoutes } from './routes/documents';
@@ -65,6 +66,7 @@ import { hasDueSessionDrops, recoverInterruptedPlanChanges, runScheduledSessionD
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, resumeDuePauses, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
+import { runNotificationsDailyIfDue } from './lib/notifications-daily';
 import { readStripeConfig, runStripeSweep } from './lib/stripe-payments';
 
 let serverStarted = false;
@@ -207,6 +209,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerClientRoutes(app);
   await registerCustomerPortalRoutes(app);
   await registerMaintenanceNoticeRoutes(app);
+  await registerNotificationRoutes(app);
   await registerPlanRoutes(app);
   await registerIptvRoutes(app);
   await registerProposalRoutes(app);
@@ -392,6 +395,16 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     };
     suspensionTick();
     scheduleSuspension();
+  }
+
+  // O sino: limpeza e aviso das suspensões a chegar, uma vez por dia.
+  if (!process.env.VITEST) {
+    const notificationsTick = () => {
+      try { runJobSync('notifications_daily', () => runNotificationsDailyIfDue()); }
+      catch (err) { app.log.error({ err }, 'notifications daily failed'); }
+    };
+    notificationsTick();
+    setInterval(notificationsTick, 3_600_000).unref();
   }
 
   // Stripe como via de pagamento (ADR 0016): sem endereço público não há webhook,
