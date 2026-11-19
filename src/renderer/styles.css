@@ -7427,3 +7427,186 @@ button.danger:disabled {
   box-shadow: inset 2px 0 0 var(--accent);
   padding-left: 8px;
 }
+
+/* Sino de notificações — no topo da barra lateral, com o painel em portal no
+   body: a barra tem overflow próprio e prendia-o lá dentro. */
+.bell-trigger {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.bell-trigger:hover,
+.bell-trigger:focus-visible,
+.bell-trigger.is-open {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.bell-trigger .nav-counter {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  border: 1px solid var(--surface);
+}
+
+.nav-counter-warn {
+  background: color-mix(in oklch, var(--warn) 18%, var(--bg));
+  color: var(--warn);
+}
+
+.bell-panel {
+  position: fixed;
+  z-index: var(--z-popover);
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.bell-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.bell-head h2 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.bell-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.bell-link:hover { text-decoration: underline; }
+
+.bell-body {
+  overflow-y: auto;
+  padding-bottom: var(--space-2);
+}
+
+.bell-section {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-1-5);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.bell-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-4);
+  border: 0;
+  border-top: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.bell-row:first-of-type { border-top: 0; }
+.bell-row:hover { background: var(--surface-2); }
+.bell-row.is-unread { background: color-mix(in oklch, var(--accent) 10%, transparent); }
+.bell-row.is-unread .bell-title { font-weight: 600; }
+
+.bell-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 999px;
+}
+
+.bell-dot-danger { background: var(--danger); }
+.bell-dot-warn { background: var(--warn); }
+.bell-dot-info { background: var(--accent); }
+.bell-dot.is-read { background: var(--text-3); opacity: 0.5; }
+
+.bell-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bell-title {
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.bell-row:not(.is-unread) .bell-title { color: var(--text-2); }
+
+.bell-detail {
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.bell-action {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  padding-top: 2px;
+}
+
+.bell-when {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.bell-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+/* Janela estreita: o painel ocupa a largura toda, com 16 px de margem. */
+@media (max-width: 520px) {
+  .bell-panel { left: 16px !important; right: 16px; width: auto; }
+}

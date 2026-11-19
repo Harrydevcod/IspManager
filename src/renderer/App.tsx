@@ -1,6 +1,7 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, NotificationBell, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
+import type { NotificationFeed } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from './lib/networkPresence';
@@ -20,7 +21,7 @@ import { StockModule } from './modules/StockModule';
 import { WorkOrdersModule } from './modules/WorkOrdersModule';
 import { SupportModule } from './modules/support/SupportModule';
 import { ReportsModule } from './modules/ReportsModule';
-import { SettingsModule } from './modules/SettingsModule';
+import { SettingsModule, type SettingsTab } from './modules/SettingsModule';
 import RouterModule from './modules/router/RouterModule';
 import { ClientsModule } from './modules/ClientsModule';
 import { DocumentsModule } from './modules/documents/DocumentsModule';
@@ -141,6 +142,10 @@ function AppShell() {
   const [stockLowFocus, setStockLowFocus] = useState(false);
   const [stockCatalogFocus, setStockCatalogFocus] = useState<number | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [notifications, setNotifications] = useState<NotificationFeed | null>(null);
+  // Separador das Configurações pedido de fora (o sino manda o alerta ao sítio que o trata).
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
+  const [settingsRequest, setSettingsRequest] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [releaseNotesVersion, setReleaseNotesVersion] = useState<string | null>(null);
@@ -202,11 +207,60 @@ function AppShell() {
       .catch(() => setSummary((previous) => previous));
   }, []);
 
+  const refreshNotifications = useCallback(() => {
+    authFetch('http://127.0.0.1:3001/api/notifications')
+      .then((response) => {
+        if (!response.ok) throw new Error('notifications unavailable');
+        return response.json() as Promise<NotificationFeed>;
+      })
+      .then(setNotifications)
+      .catch(() => setNotifications((previous) => previous));
+  }, []);
+
+  // Um só relógio para o resumo e para o sino: dois intervalos de 60 s eram o
+  // mesmo trabalho a dobrar.
   useEffect(() => {
-    refreshSummary();
-    const interval = window.setInterval(refreshSummary, PALETTE_REFRESH_MS);
+    const tick = () => { refreshSummary(); refreshNotifications(); };
+    tick();
+    const interval = window.setInterval(tick, PALETTE_REFRESH_MS);
     return () => window.clearInterval(interval);
-  }, [refreshSummary]);
+  }, [refreshSummary, refreshNotifications]);
+
+  const notificationPost = useCallback((path: string) => {
+    void authFetch(`http://127.0.0.1:3001/api/notifications${path}`, { method: 'POST' })
+      .catch(() => undefined);
+  }, []);
+
+  const openNotifications = useCallback(() => {
+    notificationPost('/seen');
+    setNotifications((feed) => (feed ? { ...feed, unseen: 0 } : feed));
+  }, [notificationPost]);
+
+  const readNotification = useCallback((id: number) => {
+    notificationPost(`/${id}/read`);
+    setNotifications((feed) => (feed
+      ? { ...feed, history: feed.history.map((entry) => (entry.id === id ? { ...entry, read: true } : entry)) }
+      : feed));
+  }, [notificationPost]);
+
+  const readAllNotifications = useCallback(() => {
+    notificationPost('/read-all');
+    setNotifications((feed) => (feed
+      ? { ...feed, unseen: 0, history: feed.history.map((entry) => ({ ...entry, read: true })) }
+      : feed));
+  }, [notificationPost]);
+
+  /** O alerta leva ao sítio que o trata: a secção, e o separador ou filtro lá dentro. */
+  const openNotificationTarget = useCallback((target: string, focus: string | null) => {
+    if (target === 'finance' && (focus === 'overdue' || focus === 'pending')) setPaymentsFocus(focus);
+    if (target === 'topology' && focus === 'incidents') setTopologyTab('incidents');
+    if (target === 'stock') setStockLowFocus(focus === 'low');
+    if (target === 'settings' && focus) {
+      setSettingsTab(focus as SettingsTab);
+      setSettingsRequest((request) => request + 1);
+    }
+    setSection(target as SectionId);
+  }, []);
 
   useEffect(() => {
     function isTypingTarget(target: EventTarget | null) {
@@ -351,6 +405,15 @@ function AppShell() {
             <strong>ISPM</strong>
             <span>Operação ISP</span>
           </div>
+          <NotificationBell
+            feed={notifications}
+            collapsed={navCollapsed}
+            tipProps={railTipProps}
+            onOpen={openNotifications}
+            onNavigate={openNotificationTarget}
+            onRead={readNotification}
+            onReadAll={readAllNotifications}
+          />
           <button
             type="button"
             className="brand-toggle"
@@ -537,8 +600,8 @@ function AppShell() {
           {section === 'audit' && <AuditModule />}
           {section === 'settings' && (
             <SettingsModule
-              key={vaultOpenRequest}
-              initialTab={vaultOpenRequest > 0 ? 'vault' : undefined}
+              key={`${vaultOpenRequest}-${settingsRequest}`}
+              initialTab={vaultOpenRequest > 0 ? 'vault' : settingsTab ?? undefined}
             />
           )}
         </section>

@@ -9,6 +9,7 @@ import { normalizeSmsPhone } from '../../shared/sms';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
 import { openPaymentLinkSql } from './vinti4';
 import { SQL_BUSINESS_TODAY, sqlBusinessDate } from '../../shared/business-day';
+import { companionUserId, listNotifications, notificationsSeenAt, type NotificationSeverity } from './notifications';
 
 /**
  * O resumo que o desktop envia ao telemóvel pareado para o Painel da app.
@@ -73,7 +74,21 @@ export type CompanionSnapshot = {
   };
   /** Clientes no bolso: todos menos os cancelados, cortados por bytes (CLIENTS_BUDGET_BYTES). */
   clients: CompanionClient[];
+  /**
+   * O histórico do sino, para o telemóvel mostrar o mesmo que o PC.
+   * Ausente numa desktop anterior à 2.74: a app fica só com o que nasceu nela.
+   */
+  notifications?: {
+    seenAt: string | null;
+    items: Array<{
+      uid: string; kind: string; severity: NotificationSeverity;
+      title: string; detail: string | null; tab: CompanionTab; at: string; read: boolean;
+    }>;
+  };
 };
+
+/** Os separadores da app Android. */
+export type CompanionTab = 'painel' | 'pedidos' | 'historico' | 'ajustes';
 
 export type CompanionClient = {
   code: string; name: string; phone: string | null; status: string;
@@ -285,6 +300,39 @@ export async function buildCompanionSnapshot(
       today: smsCounts(db, CV_DAY_START),
       month: smsCounts(db, CV_MONTH_START)
     },
-    clients: loadClients(db)
+    clients: loadClients(db),
+    notifications: loadNotificationsForPhone(db, now)
   };
+}
+
+/** Quantas entradas do histórico cabem no telemóvel: 50 × ~300 B ≈ 15 KB. */
+const NOTIFICATIONS_FOR_PHONE = 50;
+const NOTIFICATIONS_DAYS = 30;
+
+/**
+ * O telemóvel não tem utilizadores: lê como o administrador que confirmou o
+ * pareamento, por isso é o estado dele que vai no snapshot.
+ */
+function loadNotificationsForPhone(db: Database.Database, now: Date): CompanionSnapshot['notifications'] {
+  const userId = companionUserId(db);
+  const floor = new Date(now.getTime() - NOTIFICATIONS_DAYS * 86_400_000).toISOString().replace('T', ' ').slice(0, 19);
+  const items = listNotifications(db, userId, NOTIFICATIONS_FOR_PHONE)
+    .filter((row) => row.createdAt >= floor)
+    .map((row) => ({
+      uid: row.uid,
+      kind: row.kind,
+      severity: row.severity,
+      title: row.title,
+      detail: row.detail,
+      tab: phoneTab(row.section, row.focus),
+      at: row.createdAt,
+      read: row.read
+    }));
+  return { seenAt: notificationsSeenAt(db, userId), items };
+}
+
+/** A secção do PC traduzida para o separador onde a app a sabe abrir. */
+function phoneTab(section: string | null, focus: string | null): CompanionTab {
+  if (section === 'settings') return focus === 'sms' || focus === 'whatsapp' ? 'historico' : 'ajustes';
+  return 'painel';
 }

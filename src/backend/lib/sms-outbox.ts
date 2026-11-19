@@ -1,3 +1,4 @@
+import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { getSqliteDatabase } from '../db/database';
@@ -10,6 +11,7 @@ import type { SmsEventType } from '../../shared/sms';
 /** Tudo o que entra na fila: as etapas de cobrança e os avisos que não são cobrança. */
 export type SmsOutboxEvent = SmsEventType | 'test' | 'fup_notice' | 'outage_notice' | 'outage_restored' | 'general' | 'maintenance_notice';
 import { outageDispatchAllowed } from './outage-notice-policy';
+import { recordNotification } from './notifications';
 
 const DEFAULT_COMPANION_PORT = 8765;
 
@@ -395,6 +397,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
         db.prepare(`
           UPDATE sms_outbox SET status='failed', last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
         `).run('Telemóvel inacessível há 24 h', row.id);
+        noteSmsFailure(db, row, 'Telemóvel inacessível há 24 h');
       } else {
         db.prepare(`
           UPDATE sms_outbox SET last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
@@ -409,6 +412,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
       db.prepare(`
         UPDATE sms_outbox SET status='failed', attempts=attempts+1, last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
       `).run(result.error, row.id);
+      noteSmsFailure(db, row, result.error);
     } else {
       db.prepare(`
         UPDATE sms_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
@@ -418,6 +422,25 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
   }
 
   return { dispatched, retried };
+}
+
+/**
+ * Uma falha deste lado: o PC não conseguiu entregar o SMS ao telemóvel.
+ *
+ * As falhas do outro lado (o telemóvel tentou enviar e não conseguiu) nascem lá
+ * e chegam pelos eventos do pareamento — gravá-las aqui punha o mesmo SMS duas
+ * vezes no sino.
+ */
+function noteSmsFailure(db: Database, row: { id: number; toPhone: string; clientName?: string | null }, reason: string) {
+  recordNotification(db, {
+    uid: `sms:${row.id}`,
+    kind: 'sms_failed',
+    severity: 'warn',
+    title: `SMS para ${row.clientName || row.toPhone} falhou`,
+    detail: reason,
+    section: 'settings',
+    focus: 'sms'
+  });
 }
 
 // Quanto tempo depois do envio ainda vale a pena esperar pelo relatório de entrega.

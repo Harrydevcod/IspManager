@@ -367,3 +367,41 @@ export const SEVERITY_LABELS: Record<OperationsSeverity, string> = {
   amber: 'Atenção',
   red: 'Crítico'
 };
+
+/** Onde abrir a app para tratar de um achado. `focus` é o separador ou filtro dentro da secção. */
+export type OperationsTarget = { section: string; focus?: string };
+
+/**
+ * O sítio da app que trata de cada achado da operação.
+ *
+ * Uma só tabela, consultada pelo sino e pelo painel "Estado da operação": a
+ * ação de um achado não pode depender de quem o mostra. O código exato manda;
+ * sem ele, vale o prefixo da família.
+ */
+const FINDING_TARGETS: Record<string, OperationsTarget> = {
+  'billing.critical-overdue': { section: 'finance', focus: 'overdue' },
+  'billing.missing-receipts': { section: 'finance', focus: 'pending' },
+  'network.device-down': { section: 'topology', focus: 'incidents' },
+  'network.flapping': { section: 'topology', focus: 'incidents' },
+  'system.no-backup': { section: 'settings', focus: 'backups' },
+  'system.stale-backup': { section: 'settings', focus: 'backups' },
+  'system.job-errors': { section: 'settings', focus: 'jobs' },
+  'system.bus-factor': { section: 'users' },
+  'compliance.no-company-nif': { section: 'settings', focus: 'company' },
+  'fleet.not-returned': { section: 'services' }
+};
+
+const FAMILY_TARGETS: Record<string, OperationsTarget> = {
+  network: { section: 'topology' },
+  customers: { section: 'clients' },
+  fleet: { section: 'stock' },
+  access: { section: 'router' },
+  billing: { section: 'finance' },
+  messaging: { section: 'settings', focus: 'sms' },
+  system: { section: 'settings' },
+  compliance: { section: 'clients' }
+};
+
+export function targetForFinding(code: string): OperationsTarget {
+  return FINDING_TARGETS[code] ?? FAMILY_TARGETS[code.split('.')[0] ?? ''] ?? { section: 'reports' };
+}

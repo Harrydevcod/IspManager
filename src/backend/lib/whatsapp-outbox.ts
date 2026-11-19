@@ -5,6 +5,7 @@ import { renderPaymentDocumentPdf } from './documents';
 import { enqueueSmsFallbackForWhatsapp } from './sms-notices';
 import { z } from 'zod';
 import { outageDispatchAllowed } from './outage-notice-policy';
+import { recordNotification } from './notifications';
 import {
   configuredWhatsappProviderLabel,
   resolveWhatsappProvider,
@@ -144,7 +145,20 @@ async function drainOutbox(
   const markRetry = db.prepare(`UPDATE whatsapp_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='pending'`);
   const markFailedStmt = db.prepare(`UPDATE whatsapp_outbox SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=? AND status='pending'`);
   // Falha definitiva de um aviso de cobrança: o SMS equivalente entra já, não no dia seguinte.
-  const markFailed = { run: (error: string, id: number) => { if (markFailedStmt.run(error, id).changes > 0) enqueueSmsFallbackForWhatsapp(id); } };
+  const markFailed = { run: (error: string, id: number) => {
+    if (markFailedStmt.run(error, id).changes === 0) return;
+    enqueueSmsFallbackForWhatsapp(id);
+    const row = db.prepare('SELECT to_phone AS toPhone FROM whatsapp_outbox WHERE id = ?').get(id) as { toPhone: string } | undefined;
+    recordNotification(db, {
+      uid: `whatsapp:${id}`,
+      kind: 'whatsapp_failed',
+      severity: 'warn',
+      title: `WhatsApp para ${row?.toPhone ?? id} falhou`,
+      detail: error,
+      section: 'settings',
+      focus: 'whatsapp'
+    });
+  } };
 
   let sent = 0, failed = 0, retried = 0;
 

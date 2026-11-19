@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
+import { recordNotification } from './notifications';
 import { requestCompanionSnapshotPush } from './companion-sync';
 
 export type ProbeState = 'up' | 'down';
@@ -296,6 +297,19 @@ export async function runNetworkProbe(
           durationSeconds: previous && !gapBefore ? secondsBetween(previous.lastChangeAt, now) : null,
           gapBefore: gapBefore ? 1 : 0
         });
+        // Só o backbone entra no sino: um CPE de cliente em baixo é rotina.
+        if (decision.changed && target.kind === 'backbone') {
+          recordNotification(db, {
+            uid: `probe:${target.kind}:${target.id}:${now}`,
+            kind: decision.state === 'down' ? 'network_down' : 'network_up',
+            severity: decision.state === 'down' ? 'danger' : 'info',
+            title: decision.state === 'down' ? `${target.name} em baixo` : `${target.name} voltou`,
+            detail: target.ipAddress,
+            section: 'topology',
+            focus: 'incidents',
+            createdAt: now
+          });
+        }
         if (decision.changed) summary.transitions += 1;
       }
     });

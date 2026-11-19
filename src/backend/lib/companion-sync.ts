@@ -3,6 +3,7 @@ import { readSecret } from './secrets';
 import { companionTransport, selfHealCompanionAddress, signedFetch } from './sms-outbox';
 import { buildCompanionSnapshot, type CompanionSnapshot } from './companion-snapshot';
 import { appSupportsSealed, payloadForApp } from './companion-crypto';
+import { clearNotificationsChanged, notificationsChanged } from './notifications';
 
 /**
  * Sincronização desktop → telemóvel, além dos SMS: o desktop pergunta pelo
@@ -206,8 +207,9 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
     setSetting(RELAY_PHONE_KEY, relayUrl);
   }
 
-  // Volta a estar online, ou o telemóvel pediu → envia já, para o Painel não ficar com o resumo velho.
-  const due = syncRequested || !wasOnline || now.getTime() - lastPushAt >= snapshotIntervalMs();
+  // Volta a estar online, o telemóvel pediu, ou o sino mudou → envia já, para o
+  // Painel não ficar com o resumo velho nem o telemóvel com um sino desatualizado.
+  const due = syncRequested || !wasOnline || notificationsChanged() || now.getTime() - lastPushAt >= snapshotIntervalMs();
   wasOnline = true;
   if (!due) return { online: true, pushed: false, syncRequested };
 
@@ -215,7 +217,10 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
   const outcome = await deps.pushSnapshot(await deps.buildSnapshot(), getSetting(SEALED_KEY) === 'true');
   const lastPush: CompanionLastPush = { at: now.toISOString(), ok: outcome.ok, reason: outcome.ok ? null : outcome.reason };
   setSetting(LAST_PUSH_KEY, JSON.stringify(lastPush));
-  if (outcome.ok) lastPushAt = now.getTime();
+  if (outcome.ok) {
+    lastPushAt = now.getTime();
+    clearNotificationsChanged();
+  }
   return { online: true, pushed: outcome.ok, syncRequested };
 }
 

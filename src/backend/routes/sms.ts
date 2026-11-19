@@ -254,7 +254,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/api/sms/pairing/confirm', adminOnly, async (_request, reply) => {
+  app.post('/api/sms/pairing/confirm', adminOnly, async (request, reply) => {
     if (!canStoreSecrets()) {
       return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel parear nesta sessao.' });
     }
@@ -265,6 +265,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionBaseUrl', baseUrl);
     setSetting('smsCompanionDeviceName', model);
     setSetting('smsCompanionPairingVersion', '2');
+    // O telemóvel não tem utilizadores: lê as notificações como quem o pareou.
+    if (request.user?.id) setSetting('smsCompanionUserId', String(request.user.id));
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', secret);
     setSetting('smsCompanionPairingKeyHash', createHash('sha256').update(secret).digest('hex'));
     // O estado guardado era do telemóvel anterior; o novo envia o seu ao responder.
