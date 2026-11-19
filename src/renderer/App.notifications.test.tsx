@@ -132,6 +132,25 @@ describe('sino de notificações', () => {
     expect(panel()?.querySelectorAll('.bell-row.is-unread')).toHaveLength(0);
   });
 
+  test('sem nada por tratar, o painel diz "Tudo em ordem"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/auth/status')) return json({ setupRequired: false, authBypassed: true });
+      if (url.endsWith('/api/dashboard/summary')) return json(EMPTY_SUMMARY);
+      if (url.endsWith('/api/notifications')) return json({ now: [], history: [], unseen: 0 });
+      return json({});
+    }));
+    const container = await mountApp();
+    expect(bell(container).getAttribute('aria-label')).toBe('Notificações');
+    expect(bell(container).querySelector('.nav-counter')).toBeNull();
+
+    await act(async () => { bell(container).click(); });
+    expect(panel()?.textContent).toContain('Tudo em ordem');
+    expect(panel()?.querySelector('.bell-section')).toBeNull();
+    // Sem nada por ler, não aparece o botão de marcar como lidas.
+    expect(panel()?.querySelector('.bell-link')).toBeNull();
+  });
+
   test('com o menu recolhido, a legenda diz o número', async () => {
     const container = await mountApp();
     await act(async () => { container.querySelector<HTMLButtonElement>('.brand-toggle')?.click(); });
