@@ -441,7 +441,9 @@ export async function pollSmsStatusIfDue(
     FROM sms_outbox
     WHERE android_request_id IS NOT NULL
       AND (status IN ('pending_approval','approved')
-           OR (status = 'sent' AND delivered_at IS NULL AND sent_at >= datetime('now', '-${DELIVERY_WATCH_HOURS} hours')))
+           OR (status = 'sent' AND delivered_at IS NULL AND sent_at >= datetime('now', '-${DELIVERY_WATCH_HOURS} hours'))
+           -- Falhada no telemovel: continua a perguntar, porque um reenvio por la tem de chegar ca.
+           OR (status = 'failed' AND failed_at >= datetime('now', '-${DELIVERY_WATCH_HOURS} hours')))
   `).all() as Array<{ id: number; status: SmsOutboxStatus; androidRequestId: string }>;
 
   const markDelivered = db.prepare(`
@@ -470,8 +472,10 @@ export async function pollSmsStatusIfDue(
           ? 'approved_at'
           : 'failed_at';
 
+    // Sai de falhada (reenviada no telemovel): a marca da falha deixa de valer.
+    const clearFailure = row.status === 'failed' ? ', failed_at=NULL' : '';
     db.prepare(`
-      UPDATE sms_outbox SET status=?, ${column}=COALESCE(${column}, datetime('now')), last_error=?, updated_at=datetime('now') WHERE id=?
+      UPDATE sms_outbox SET status=?, ${column}=COALESCE(${column}, datetime('now'))${clearFailure}, last_error=?, updated_at=datetime('now') WHERE id=?
     `).run(result.status, result.error ?? null, row.id);
     if (result.status === 'sent' && deliveredAt) markDelivered.run(deliveredAt, row.id);
     updated += 1;

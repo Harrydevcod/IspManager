@@ -247,6 +247,38 @@ describe('SMS outbox', () => {
     expect(row.failed_at).toBeTruthy();
   });
 
+  test('poll picks a failed row back up when the phone resends it', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='failed', failed_at=datetime('now','-1 hours'), last_error='sem rede', android_request_id='android-1' WHERE id=?`).run(id);
+
+    expect((await pollSmsStatusIfDue(new Date(), {
+      postRequest: async () => ({ ok: true, androidRequestId: 'android-1' }),
+      fetchStatus: async () => ({ status: 'sent' })
+    })).updated).toBe(1);
+
+    const row = db.prepare('SELECT status, sent_at, failed_at, last_error FROM sms_outbox WHERE id = ?').get(id) as { status: string; sent_at: string | null; failed_at: string | null; last_error: string | null };
+    expect(row.status).toBe('sent');
+    expect(row.sent_at).toBeTruthy();
+    expect(row.failed_at).toBeNull();
+    expect(row.last_error).toBeNull();
+  });
+
+  test('poll does not ask about a failed row that never reached the phone', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='failed', failed_at=datetime('now'), android_request_id=NULL WHERE id=?`).run(id);
+    const fetchStatus = vi.fn(async () => ({ status: 'sent' as const }));
+    await pollSmsStatusIfDue(new Date(), { postRequest: async () => ({ ok: true, androidRequestId: 'x' }), fetchStatus });
+    expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
+  test('poll stops asking about a failure older than 48 hours', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='failed', failed_at=datetime('now','-49 hours'), android_request_id='android-1' WHERE id=?`).run(id);
+    const fetchStatus = vi.fn(async () => ({ status: 'sent' as const }));
+    await pollSmsStatusIfDue(new Date(), { postRequest: async () => ({ ok: true, androidRequestId: 'x' }), fetchStatus });
+    expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
   test('poll records the delivery report on a row already sent', async () => {
     const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
     db.prepare(`UPDATE sms_outbox SET status='sent', sent_at=datetime('now','-1 hours'), android_request_id='android-1' WHERE id=?`).run(id);
