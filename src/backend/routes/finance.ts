@@ -22,7 +22,7 @@ import {
   settleInvoices,
   voidReceipt
 } from '../lib/payments';
-import { loadPaymentBehaviour } from '../lib/payment-behaviour';
+import { loadPaymentBehaviour, punctualityScaleDistributions } from '../lib/payment-behaviour';
 import { loadReceivables } from '../lib/receivables';
 import { loadClientFinance } from '../lib/client-finance';
 import { cancelPaymentPlan, cancelPaymentPlanSchema, createPaymentPlan, createPaymentPlanSchema } from '../lib/payment-plans';
@@ -918,6 +918,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       if (!parsed.success) return reply.status(400).send({ error: 'Data invalida' });
       return loadPaymentBehaviour(getSqliteDatabase(), { asOf: parsed.data.asOf });
     });
+
+  // O que cada escala de pontualidade faria a esta carteira: alimenta a escolha
+  // nas Configuracoes, para ela se fazer sobre numeros e nao sobre adjectivos.
+  app.get('/api/finance/payment-scales', { preHandler: requireRole(['admin', 'operator']) },
+    async () => ({ scales: punctualityScaleDistributions(getSqliteDatabase()) }));
 
   app.get('/api/clients/:id/finance', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);

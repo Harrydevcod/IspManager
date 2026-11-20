@@ -1,6 +1,8 @@
 import type { UpdateStatus } from '../shared/update-status';
 import type { BackgroundSettings, BackgroundSettingsChange } from '../shared/background-settings';
-import type { FinancialState, PaymentClass, PaymentScore, PaymentTrend } from '../shared/payment-score';
+import type {
+  FinancialState, PaymentClass, PaymentScore, PaymentTrend, PunctualityScale
+} from '../shared/payment-score';
 
 declare global {
   interface Window {
@@ -259,6 +261,7 @@ export type ClientBehaviour = PaymentScore & {
 export type PaymentBehaviourReport = {
   generatedAt: string;
   asOf: string;
+  scale: PunctualityScale;
   totals: {
     classified: number;
     provisional: number;

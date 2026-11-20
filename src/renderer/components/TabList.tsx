@@ -1,7 +1,7 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Button } from './Button';
 
-export type TabItem<T extends string> = { id: T; label: ReactNode };
+export type TabItem<T extends string> = { id: T; label: ReactNode; ariaLabel?: string };
 
 type TabListProps<T extends string> = {
   /** Os ids saem daqui: `${idPrefix}-tab-${id}` na aba, `${idPrefix}-panel-${id}` no painel que ela controla. */
@@ -49,6 +49,7 @@ export function TabList<T extends string>({ idPrefix, label, tabs, value, onChan
             id={`${idPrefix}-tab-${tab.id}`}
             variant="ghost"
             role="tab"
+            aria-label={tab.ariaLabel}
             aria-selected={selected}
             aria-controls={`${idPrefix}-panel-${tab.id}`}
             tabIndex={selected ? 0 : -1}

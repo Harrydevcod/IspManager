@@ -7736,3 +7736,74 @@ button.danger:disabled {
 .score-trend.is-down { color: var(--danger); }
 .score-trend.is-flat { color: var(--text-3); }
 .score-trend.is-unknown { color: var(--text-3); }
+
+/* Comparação das escalas de pontualidade, nas Configurações › Faturação.
+   Tabela a sério porque é mesmo uma matriz com cabeçalhos nos dois eixos. */
+
+.scale-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.scale-compare {
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  /* Travada: esticada a toda a largura, os números ficavam longe do nome da
+     escala e a linha deixava de se seguir com o olho. */
+  max-width: 32rem;
+  width: 100%;
+}
+
+.scale-compare caption {
+  color: var(--text-3);
+  padding-bottom: var(--space-1);
+  text-align: left;
+}
+
+.scale-compare th,
+.scale-compare td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: center;
+}
+
+.scale-compare thead th {
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scale-compare tbody th,
+.scale-compare thead th:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scale-compare tbody td {
+  font-variant-numeric: tabular-nums;
+}
+
+.scale-compare .scale-ladder {
+  color: var(--text-3);
+  text-align: left;
+}
+
+/* A que está escolhida sustenta as letras que o Financeiro mostra. */
+.scale-compare tr.is-chosen th,
+.scale-compare tr.is-chosen td {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  color: var(--text);
+}
+
+.scale-compare tr.is-chosen th[scope='row'] {
+  font-weight: 700;
+}
+
+/* A escala em vigor, junto aos filtros do Comportamento. */
+.behaviour-scale {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  margin-left: auto;
+  white-space: nowrap;
+}

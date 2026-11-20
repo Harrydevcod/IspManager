@@ -1,14 +1,18 @@
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { businessDay } from '../../shared/business-day';
-import { monthsBefore } from '../../shared/payment-score';
+import { DEFAULT_PUNCTUALITY_SCALE, monthsBefore } from '../../shared/payment-score';
 import { runMigrations } from '../db/migrate';
 import { insertClient } from './client-records';
-import { behaviourForClient, loadPaymentBehaviour } from './payment-behaviour';
+import {
+  PUNCTUALITY_SCALE_KEY, behaviourForClient, currentPunctualityScale,
+  loadPaymentBehaviour, punctualityScaleDistributions
+} from './payment-behaviour';
 
 let db: Database.Database;
 beforeAll(() => { db = new Database(':memory:'); runMigrations(db); });
 beforeEach(() => {
+  db.prepare('DELETE FROM app_settings WHERE key = ?').run(PUNCTUALITY_SCALE_KEY);
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
@@ -21,6 +25,9 @@ const TODAY = businessDay();
 const dueMonthsAgo = (n: number) => monthsBefore(TODAY, n);
 const daysAgo = (n: number) =>
   new Date(Date.parse(`${TODAY}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+/** `n` dias depois da data dada. */
+const daysAfter = (iso: string, n: number) =>
+  new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 let seq = 0;
 
@@ -200,5 +207,63 @@ describe('a carteira', () => {
     const clientId = insertClient(db, { fullName: 'Nunca pagou' });
     for (let n = 1; n <= 6; n += 1) addInvoice(clientId, { dueDate: dueMonthsAgo(n) });
     expect(only(clientId)).toMatchObject({ letter: 'E', settled: 0, state: 'vencido' });
+  });
+});
+
+describe('a escala da pontualidade', () => {
+  const setScale = (value: string) => db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(PUNCTUALITY_SCALE_KEY, value);
+
+  /** Paga as seis, nenhuma a horas, sempre a duas semanas do vencimento. */
+  function alwaysLate(name: string) {
+    const clientId = insertClient(db, { fullName: name });
+    for (let n = 2; n <= 7; n += 1) {
+      const dueDate = dueMonthsAgo(n);
+      addReceipt(addInvoice(clientId, { dueDate }), daysAfter(dueDate, 14));
+    }
+    return clientId;
+  }
+
+  test('por escolher, vale a de omissão', () => {
+    expect(currentPunctualityScale(db)).toBe(DEFAULT_PUNCTUALITY_SCALE);
+  });
+
+  test('um valor estragado na base não deixa a carteira sem classificação', () => {
+    setScale('a escala do costume');
+    expect(currentPunctualityScale(db)).toBe(DEFAULT_PUNCTUALITY_SCALE);
+    const clientId = punctualClient('Com lixo guardado');
+    expect(only(clientId).letter).toBe('A');
+  });
+
+  test('a escolha guardada muda a letra de quem paga sempre tarde', () => {
+    const clientId = alwaysLate('Paga tarde');
+    setScale('tudo_ou_nada');
+    expect(only(clientId).letter).toBe('E');
+    setScale('generosa');
+    expect(only(clientId).letter).toBe('C');
+    setScale('exigente');
+    expect(only(clientId).letter).toBe('D');
+  });
+
+  test('o relatório diz com que escala foi calculado', () => {
+    setScale('generosa');
+    expect(loadPaymentBehaviour(db, { asOf: TODAY }).scale).toBe('generosa');
+    // Quem pede uma escala em concreto manda sobre o que está guardado.
+    expect(loadPaymentBehaviour(db, { asOf: TODAY, scale: 'tudo_ou_nada' }).scale).toBe('tudo_ou_nada');
+  });
+
+  test('a pré-visualização dá as três de uma vez, sem mexer no que está guardado', () => {
+    alwaysLate('Paga tarde');
+    punctualClient('Impecável');
+    setScale('exigente');
+
+    const previews = punctualityScaleDistributions(db, TODAY);
+    expect(previews.map((p) => p.scale)).toEqual(['tudo_ou_nada', 'generosa', 'exigente']);
+    for (const preview of previews) expect(preview.classified).toBe(2);
+    expect(previews.find((p) => p.scale === 'tudo_ou_nada')!.distribution).toMatchObject({ A: 1, E: 1 });
+    expect(previews.find((p) => p.scale === 'generosa')!.distribution).toMatchObject({ A: 1, C: 1 });
+    expect(previews.find((p) => p.scale === 'exigente')!.distribution).toMatchObject({ A: 1, D: 1 });
+    expect(currentPunctualityScale(db)).toBe('exigente');
   });
 });

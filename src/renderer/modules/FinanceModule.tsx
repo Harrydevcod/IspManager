@@ -19,7 +19,7 @@ const TABS = [
   { id: 'lucro', label: 'Lucro', icon: TrendingUp },
   { id: 'investimentos', label: 'Investimentos', icon: Wallet },
   { id: 'despesas', label: 'Despesas', icon: Receipt }
-].map(({ id, label, icon: Icon }) => ({ id: id as FinanceTab, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }));
+].map(({ id, label, icon: Icon }) => ({ id: id as FinanceTab, ariaLabel: label, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }));
 
 /**
  * Financeiro shell: groups Pagamentos (PaymentsModule), Lucro (ProfitModule), Investimentos

@@ -38,6 +38,7 @@ const client = (over: Partial<ClientBehaviour>): ClientBehaviour => ({
 const report: PaymentBehaviourReport = {
   generatedAt: '2026-11-20T00:00:00.000Z',
   asOf: '2026-11-20',
+  scale: 'exigente',
   totals: {
     classified: 3,
     provisional: 1,
@@ -200,6 +201,11 @@ describe('Comportamento de pagamento', () => {
     if (!row) throw new Error('linha nao encontrada');
     await act(async () => { row.click(); });
     expect(onOpenClient).toHaveBeenCalledWith(3);
+  });
+
+  test('diz com que escala as letras foram feitas', async () => {
+    const container = await mount();
+    expect(container.querySelector('.behaviour-scale')?.textContent).toBe('Escala exigente');
   });
 
   test('um erro da API deixa tentar outra vez em vez de um ecra vazio', async () => {

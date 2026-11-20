@@ -1,4 +1,5 @@
 import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, Gauge, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
+import { DEFAULT_PUNCTUALITY_SCALE } from '../../shared/payment-score';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -120,6 +121,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     receiptPrefix: 'RC',
     ivaRate: '15',
     fiscalRegime: 'normal',
+    punctualityScale: DEFAULT_PUNCTUALITY_SCALE,
     showIva: false,
     printQrCode: false,
     printRentalLines: false,
@@ -877,7 +879,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         value={activeTab}
         onChange={setActiveTab}
         tabs={TABS.filter((tab) => tab.id !== 'vault' || auth.isAuthBypassed || auth.hasRole('admin'))
-          .map(({ id, label, icon: Icon }) => ({ id, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }))}
+          .map(({ id, label, icon: Icon }) => ({ id, ariaLabel: label, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }))}
       />
       </>)}
 

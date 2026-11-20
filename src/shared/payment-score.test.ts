@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   DELAY_SCALE_DAYS, MIN_EVALUATED, PAYMENT_CLASSES, SCORE_WEIGHTS,
-  classFor, monthKeysEndingAt, outcomeFor, punctualityCredit, scoreClient, trendFor,
-  type InvoiceFact
+  DEFAULT_PUNCTUALITY_SCALE, PUNCTUALITY_SCALES, PUNCTUALITY_SCALE_CODES,
+  classFor, monthKeysEndingAt, outcomeFor, punctualityCredit, punctualityScaleOf,
+  scoreClient, trendFor,
+  type InvoiceFact, type PunctualityScale
 } from './payment-score';
 
 const AS_OF = '2026-11-19';
@@ -39,10 +41,48 @@ describe('pesos', () => {
 });
 
 describe('escalão da pontualidade', () => {
-  const credit = (daysLate: number, settled = true) =>
-    punctualityCredit({ dueDate: '2026-11-10', settled, settledOn: settled ? '2026-11-10' : null, daysLate, onTime: daysLate <= 0 && settled });
+  const credit = (daysLate: number, settled = true, scale?: PunctualityScale) =>
+    punctualityCredit(
+      { dueDate: '2026-11-10', settled, settledOn: settled ? '2026-11-10' : null, daysLate, onTime: daysLate <= 0 && settled },
+      scale
+    );
 
-  it('dá crédito por escalão, e nada acima de 30 dias', () => {
+  it('pagar ao vencimento vale tudo em qualquer escala', () => {
+    for (const scale of PUNCTUALITY_SCALE_CODES) {
+      expect(credit(0, true, scale)).toBe(1);
+      expect(credit(-4, true, scale)).toBe(1);
+    }
+  });
+
+  it('"tudo ou nada" não dá crédito a um único dia de atraso', () => {
+    expect(credit(1, true, 'tudo_ou_nada')).toBe(0);
+  });
+
+  it('a generosa dá mais do que a exigente em todos os degraus de atraso', () => {
+    for (const daysLate of [3, 10, 25]) {
+      expect(credit(daysLate, true, 'generosa')).toBeGreaterThan(credit(daysLate, true, 'exigente'));
+    }
+  });
+
+  it('nenhuma escala dá crédito acima de 30 dias', () => {
+    for (const scale of PUNCTUALITY_SCALE_CODES) expect(credit(31, true, scale)).toBe(0);
+  });
+
+  it('o que estiver guardado só vale se for uma escala', () => {
+    expect(punctualityScaleOf('generosa')).toBe('generosa');
+    expect(punctualityScaleOf('')).toBe(DEFAULT_PUNCTUALITY_SCALE);
+    expect(punctualityScaleOf('lixo')).toBe(DEFAULT_PUNCTUALITY_SCALE);
+    expect(punctualityScaleOf('toString')).toBe(DEFAULT_PUNCTUALITY_SCALE);
+    expect(punctualityScaleOf(undefined)).toBe(DEFAULT_PUNCTUALITY_SCALE);
+  });
+
+  it('cada escala acaba em zero, para nenhuma deixar um atraso sem resposta', () => {
+    for (const ladder of Object.values(PUNCTUALITY_SCALES)) {
+      expect(ladder[ladder.length - 1]).toEqual([Infinity, 0]);
+    }
+  });
+
+  it('a de omissão dá crédito por escalão, e nada acima de 30 dias', () => {
     expect(credit(-3)).toBe(1);
     expect(credit(0)).toBe(1);
     expect(credit(5)).toBe(0.7);
@@ -143,13 +183,36 @@ describe('pontuação do cliente', () => {
     expect(score.letter).toBe('A');
   });
 
-  it('paga sempre mas sempre tarde: não é pontual, mas também não é crítico', () => {
-    // O caso que decidiu o escalão. Seis mensalidades pagas, nenhuma a horas,
-    // sempre a duas semanas do vencimento.
-    const score = scoreClient(monthly(6, '2026-09', () => 14), AS_OF);
-    expect(score.onTime).toBe(0);
-    expect(score.settled).toBe(6);
-    expect(score.letter).toBe('D');
+  it('paga sempre mas sempre tarde: a escala decide quão grave isso é', () => {
+    // O caso que abriu a escolha das três escalas: seis mensalidades pagas,
+    // nenhuma a horas, sempre a duas semanas do vencimento. Para a escala
+    // "tudo ou nada" é igual a nunca ter pago.
+    const invoices = monthly(6, '2026-09', () => 14);
+    const base = scoreClient(invoices, AS_OF);
+    expect(base.onTime).toBe(0);
+    expect(base.settled).toBe(6);
+
+    expect(scoreClient(invoices, AS_OF, 'tudo_ou_nada').letter).toBe('E');
+    expect(scoreClient(invoices, AS_OF, 'generosa').letter).toBe('C');
+    expect(scoreClient(invoices, AS_OF, 'exigente').letter).toBe('D');
+    // Sem escolha, vale a de omissão.
+    expect(base.letter).toBe(scoreClient(invoices, AS_OF, DEFAULT_PUNCTUALITY_SCALE).letter);
+  });
+
+  it('quem paga sempre a horas chega a 100 em qualquer escala', () => {
+    const invoices = monthly(12, '2026-11', () => 0);
+    for (const scale of PUNCTUALITY_SCALE_CODES) {
+      expect(scoreClient(invoices, AS_OF, scale)).toMatchObject({ score: 100, letter: 'A' });
+    }
+  });
+
+  it('uma escala mais dura nunca dá mais pontos do que uma mais branda', () => {
+    const invoices = monthly(9, '2026-10', (i) => i * 3);
+    const estrita = scoreClient(invoices, AS_OF, 'tudo_ou_nada').score;
+    const exigente = scoreClient(invoices, AS_OF, 'exigente').score;
+    const generosa = scoreClient(invoices, AS_OF, 'generosa').score;
+    expect(estrita).toBeLessThanOrEqual(exigente);
+    expect(exigente).toBeLessThanOrEqual(generosa);
   });
 
   it(`atraso médio de ${DELAY_SCALE_DAYS} dias ou mais anula esse critério`, () => {

@@ -1,8 +1,10 @@
 import type { Database } from 'better-sqlite3';
 import { SQL_BUSINESS_TODAY, businessDay } from '../../shared/business-day';
 import {
-  PAYMENT_CLASS_LETTERS, SCORE_WINDOW_MONTHS, monthsBefore, scoreClient, trendFor,
-  type FinancialState, type InvoiceFact, type PaymentClass, type PaymentScore, type PaymentTrend
+  PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_CODES, SCORE_WINDOW_MONTHS,
+  monthsBefore, punctualityScaleOf, scoreClient, trendFor,
+  type FinancialState, type InvoiceFact, type PaymentClass, type PaymentScore,
+  type PaymentTrend, type PunctualityScale
 } from '../../shared/payment-score';
 import { balanceSqlExpr, overdueSqlPredicate } from './payments';
 
@@ -34,9 +36,25 @@ export type ClientBehaviour = PaymentScore & {
   trend: PaymentTrend;
 };
 
+/** A chave em `app_settings`; a escolha vive em Configurações › Faturação. */
+export const PUNCTUALITY_SCALE_KEY = 'punctualityScale';
+
+/**
+ * A escala em vigor. Como em quinze outros módulos deste repo, a leitura de
+ * `app_settings` é local — um valor por ler ou estragado cai na de omissão, que
+ * é o que mantém a carteira classificada mesmo numa instalação acabada de abrir.
+ */
+export function currentPunctualityScale(db: Database): PunctualityScale {
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?')
+    .get(PUNCTUALITY_SCALE_KEY) as { value: string } | undefined;
+  return punctualityScaleOf(row?.value.trim());
+}
+
 export type PaymentBehaviourReport = {
   generatedAt: string;
   asOf: string;
+  /** A escala com que estas letras foram calculadas. */
+  scale: PunctualityScale;
   totals: {
     /** Clientes com classificação consolidada (histórico bastante). */
     classified: number;
@@ -141,16 +159,17 @@ function stateOf(row: ClientRow): FinancialState {
 /** `clientId` restringe a um cliente (ficha financeira); sem ele, a carteira toda. */
 export function loadPaymentBehaviour(
   db: Database,
-  options: { asOf?: string; clientId?: number } = {}
+  options: { asOf?: string; clientId?: number; scale?: PunctualityScale } = {}
 ): PaymentBehaviourReport {
   const asOf = options.asOf ?? businessDay();
+  const scale = options.scale ?? currentPunctualityScale(db);
   const since = monthsBefore(asOf, FACT_WINDOW_MONTHS);
   const facts = loadFacts(db, since, options.clientId);
 
   const clients: ClientBehaviour[] = loadClients(db, options.clientId).map((row) => {
     const invoices = facts.get(row.clientId) ?? [];
     return {
-      ...scoreClient(invoices, asOf),
+      ...scoreClient(invoices, asOf, scale),
       clientId: row.clientId,
       clientName: row.clientName,
       clientCode: row.clientCode,
@@ -158,7 +177,7 @@ export function loadPaymentBehaviour(
       clientStatus: row.clientStatus,
       state: stateOf(row),
       overdueCve: money(row.overdueCve),
-      trend: trendFor(invoices, asOf)
+      trend: trendFor(invoices, asOf, scale)
     };
   });
 
@@ -170,6 +189,7 @@ export function loadPaymentBehaviour(
   return {
     generatedAt: new Date().toISOString(),
     asOf,
+    scale,
     totals: {
       classified: classified.length,
       provisional: clients.length - classified.length,
@@ -190,4 +210,36 @@ export function loadPaymentBehaviour(
 /** A classificação de um cliente só, para a ficha financeira. */
 export function behaviourForClient(db: Database, clientId: number, asOf?: string): ClientBehaviour | null {
   return loadPaymentBehaviour(db, { asOf, clientId }).clients[0] ?? null;
+}
+
+export type ScaleDistribution = {
+  scale: PunctualityScale;
+  classified: number;
+  distribution: Record<PaymentClass, number>;
+};
+
+/**
+ * O que cada escala faria à carteira de hoje, para a escolha nas Configurações
+ * se fazer sobre números e não sobre adjectivos: "generosa" e "exigente" são
+ * duas palavras que ninguém consegue avaliar sozinhas.
+ *
+ * Os factos lêem-se uma vez e dobram-se três — na carteira real são duas
+ * centenas de linhas, e a política deste read model é não ter cache.
+ */
+export function punctualityScaleDistributions(db: Database, asOf?: string): ScaleDistribution[] {
+  const at = asOf ?? businessDay();
+  const facts = loadFacts(db, monthsBefore(at, FACT_WINDOW_MONTHS));
+  const clients = loadClients(db).map((row) => facts.get(row.clientId) ?? []);
+
+  return PUNCTUALITY_SCALE_CODES.map((scale) => {
+    const letters = clients.map((invoices) => scoreClient(invoices, at, scale).letter);
+    const classified = letters.filter((letter) => letter !== null);
+    return {
+      scale,
+      classified: classified.length,
+      distribution: Object.fromEntries(
+        PAYMENT_CLASS_LETTERS.map((letter) => [letter, classified.filter((l) => l === letter).length])
+      ) as Record<PaymentClass, number>
+    };
+  });
 }

@@ -38,17 +38,45 @@ export const PAYMENT_CLASSES: readonly PaymentClassInfo[] = [
 export const SCORE_WEIGHTS = { punctuality: 40, delay: 25, settled: 20, regularity: 15 } as const;
 
 /**
- * O que vale pagar tarde. Pagar ao vencimento vale tudo; a partir daí o crédito
- * desce por escalão, e acima de 30 dias não vale nada.
+ * O que vale pagar tarde — e isto escolhe-se em Configurações › Faturação.
  *
- * Medido na carteira real antes de ser fixado: tudo-ou-nada punha quem paga
- * todos os meses com duas semanas de atraso em "Crítico", ao lado de quem não
- * paga. Uma mensalidade por liquidar não ganha crédito nenhum — o atraso dela
- * ainda está a correr, e o escalão premiava-a por isso.
+ * Pagar ao vencimento vale sempre tudo; o que muda entre as três escalas é
+ * quanto vale pagar com atraso. Medido na carteira real antes de abrir a
+ * escolha: com "tudo ou nada", quem paga todos os meses mas sempre com duas
+ * semanas de atraso caía em "Crítico", ao lado de quem não paga.
+ *
+ * "Tudo ou nada" é uma escada como as outras, com um só degrau — três nomes,
+ * um caminho de código.
  */
-export const PUNCTUALITY_LADDER: ReadonlyArray<readonly [maxDaysLate: number, credit: number]> = [
-  [0, 1], [5, 0.7], [15, 0.4], [30, 0.15], [Infinity, 0]
-];
+export type PunctualityScale = 'tudo_ou_nada' | 'generosa' | 'exigente';
+
+export type PunctualityLadder = ReadonlyArray<readonly [maxDaysLate: number, credit: number]>;
+
+export const PUNCTUALITY_SCALES: Record<PunctualityScale, PunctualityLadder> = {
+  tudo_ou_nada: [[0, 1], [Infinity, 0]],
+  generosa: [[0, 1], [5, 0.85], [15, 0.6], [30, 0.35], [Infinity, 0]],
+  exigente: [[0, 1], [5, 0.7], [15, 0.4], [30, 0.15], [Infinity, 0]]
+};
+
+export const PUNCTUALITY_SCALE_LABELS: Record<PunctualityScale, string> = {
+  tudo_ou_nada: 'Tudo ou nada',
+  generosa: 'Generosa',
+  exigente: 'Exigente'
+};
+
+export const PUNCTUALITY_SCALE_CODES = Object.keys(PUNCTUALITY_SCALES) as PunctualityScale[];
+
+/** A escala escolhida na carteira real a 20/11/2026, e a de quem nunca escolher. */
+export const DEFAULT_PUNCTUALITY_SCALE: PunctualityScale = 'exigente';
+
+export function isPunctualityScale(value: unknown): value is PunctualityScale {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PUNCTUALITY_SCALES, value);
+}
+
+/** O que estiver guardado, se for uma escala; senão a de omissão. */
+export function punctualityScaleOf(value: unknown): PunctualityScale {
+  return isPunctualityScale(value) ? value : DEFAULT_PUNCTUALITY_SCALE;
+}
 
 /** Atraso médio a partir do qual esse critério vale zero. */
 export const DELAY_SCALE_DAYS = 30;
@@ -174,7 +202,11 @@ export function outcomeFor(invoice: InvoiceFact, asOf: string): InvoiceOutcome |
  * quatro critérios dariam nota máxima a um cliente que nunca teve nada para
  * pagar, o que é exactamente o erro que a regra do histórico mínimo evita.
  */
-export function scoreClient(invoices: InvoiceFact[], asOf: string): PaymentScore {
+export function scoreClient(
+  invoices: InvoiceFact[],
+  asOf: string,
+  scale: PunctualityScale = DEFAULT_PUNCTUALITY_SCALE
+): PaymentScore {
   const from = monthsBefore(asOf, SCORE_WINDOW_MONTHS);
   const outcomes = invoices
     .filter((invoice) => invoice.dueDate >= from)
@@ -197,7 +229,7 @@ export function scoreClient(invoices: InvoiceFact[], asOf: string): PaymentScore
     (outcome) => outcome.dueDate.slice(0, 7) === month && outcome.daysLate > 0
   )).length;
 
-  const credit = outcomes.reduce((sum, outcome) => sum + punctualityCredit(outcome), 0);
+  const credit = outcomes.reduce((sum, outcome) => sum + punctualityCredit(outcome, scale), 0);
   const parts: ScoreParts = {
     punctuality: SCORE_WEIGHTS.punctuality * (credit / evaluated),
     delay: SCORE_WEIGHTS.delay * Math.max(0, 1 - avgDelay / DELAY_SCALE_DAYS),
@@ -221,11 +253,19 @@ export function scoreClient(invoices: InvoiceFact[], asOf: string): PaymentScore
   };
 }
 
-/** Quanto conta uma mensalidade para a pontualidade, entre 0 e 1. */
-export function punctualityCredit(outcome: InvoiceOutcome): number {
+/**
+ * Quanto conta uma mensalidade para a pontualidade, entre 0 e 1.
+ *
+ * Uma mensalidade por liquidar não ganha crédito em escala nenhuma: o atraso
+ * dela ainda está a correr, e o escalão premiava-a por isso.
+ */
+export function punctualityCredit(
+  outcome: InvoiceOutcome,
+  scale: PunctualityScale = DEFAULT_PUNCTUALITY_SCALE
+): number {
   if (!outcome.settled) return 0;
   const late = Math.max(0, outcome.daysLate);
-  return PUNCTUALITY_LADDER.find(([maxDaysLate]) => late <= maxDaysLate)![1];
+  return PUNCTUALITY_SCALES[scale].find(([maxDaysLate]) => late <= maxDaysLate)![1];
 }
 
 export function classFor(score: number): PaymentClassInfo {
@@ -248,11 +288,18 @@ export type PaymentTrend = 'up' | 'flat' | 'down' | 'unknown';
  * letra e não os pontos, porque é a letra que muda a decisão de quem cobra.
  * `unknown` enquanto uma das duas datas não tiver histórico bastante.
  */
-export function trendFor(invoices: InvoiceFact[], asOf: string, backDays: number = TREND_DAYS): PaymentTrend {
-  const now = scoreClient(invoices, asOf);
+export function trendFor(
+  invoices: InvoiceFact[],
+  asOf: string,
+  scale: PunctualityScale = DEFAULT_PUNCTUALITY_SCALE,
+  backDays: number = TREND_DAYS
+): PaymentTrend {
+  const now = scoreClient(invoices, asOf, scale);
   const at = dayStartUtc(asOf);
   if (now.letter === null || at === null) return 'unknown';
-  const before = scoreClient(invoices, new Date(at - backDays * 86_400_000).toISOString().slice(0, 10));
+  const before = scoreClient(
+    invoices, new Date(at - backDays * 86_400_000).toISOString().slice(0, 10), scale
+  );
   if (before.letter === null) return 'unknown';
   const moved = classRank(before.letter) - classRank(now.letter);
   if (moved > 0) return 'up';

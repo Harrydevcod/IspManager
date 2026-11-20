@@ -9,7 +9,7 @@ import { authFetch } from '../../lib/auth';
 import { useColumnVisibility } from '../../lib/columnVisibility';
 import { formatCve } from '../../lib/format';
 import {
-  FINANCIAL_STATE_LABELS, PAYMENT_CLASS_LETTERS,
+  FINANCIAL_STATE_LABELS, PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_LABELS,
   type PaymentClass
 } from '../../../shared/payment-score';
 import type { ClientBehaviour, PaymentBehaviourReport } from '../../types';
@@ -232,6 +232,12 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
           onToggle={columnVisibility.toggle}
           onReset={columnVisibility.reset}
         />
+        {/* Sem isto as letras não se explicam a quem não abriu as Configurações. */}
+        {report && (
+          <span className="behaviour-scale" title="Configurações › Faturação">
+            Escala {PUNCTUALITY_SCALE_LABELS[report.scale].toLowerCase()}
+          </span>
+        )}
       </FilterBar>
 
       <DataTable<ClientBehaviour>
