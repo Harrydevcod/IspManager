@@ -54,7 +54,6 @@ export function PunctualityScaleField({
     <div className="scale-field wide-field">
       <Select
         label="Escala da pontualidade"
-        wide
         hint="Muda as letras de todos os clientes, histórico incluído."
         value={value}
         onChange={(event) => onChange(event.target.value as PunctualityScale)}

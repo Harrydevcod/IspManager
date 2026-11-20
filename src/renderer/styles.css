@@ -7745,6 +7745,14 @@ button.danger:disabled {
   gap: var(--space-2);
 }
 
+/* O bloco ocupa as duas colunas para a comparação respirar, mas a caixa da
+   escolha fica da largura de um campo normal: um input a toda a largura não
+   se lê e não se parece com nada à volta. Limite absoluto e não 50% — quando
+   a grelha passa a uma coluna, metade dela dava uma caixa de 131px. */
+.scale-field > .field {
+  max-width: min(25rem, 100%);
+}
+
 .scale-compare {
   border-collapse: collapse;
   font-size: var(--fs-xs);
