@@ -7648,3 +7648,162 @@ button.danger:disabled {
   justify-content: space-between;
   gap: var(--space-3);
 }
+
+/* --- Comportamento de pagamento ---------------------------------------- */
+/* A letra de um cliente numa escala de cinco passos. Não é o `.badge`
+   genérico: cinco níveis precisam de cinco cores distintas, e o Badge só
+   tem quatro de severidade — C e D saíam iguais, que é precisamente a
+   distinção que interessa a quem cobra. Mesmo princípio do
+   `.payment-status`: pílula própria para um domínio próprio. */
+
+.behaviour-module {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.score-pill {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--rpill);
+  display: inline-flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  gap: var(--space-1-5);
+  justify-content: center;
+  letter-spacing: 0.04em;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-2);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.score-pill .score-letter {
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.score-pill.is-a {
+  background: color-mix(in oklch, var(--success) 18%, var(--bg));
+  border-color: color-mix(in oklch, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.score-pill.is-b {
+  background: color-mix(in oklch, var(--info) 16%, var(--bg));
+  border-color: color-mix(in oklch, var(--info) 35%, transparent);
+  color: var(--info);
+}
+
+.score-pill.is-c {
+  background: color-mix(in oklch, var(--warn) 18%, var(--bg));
+  border-color: color-mix(in oklch, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+
+/* O passo entre o âmbar e o vermelho: laranja, para D não ser igual a C. */
+.score-pill.is-d {
+  --score-d: color-mix(in oklch, var(--warn) 45%, var(--danger));
+  background: color-mix(in oklch, var(--score-d) 18%, var(--bg));
+  border-color: color-mix(in oklch, var(--score-d) 38%, transparent);
+  color: var(--score-d);
+}
+
+.score-pill.is-e {
+  background: color-mix(in oklch, var(--danger) 18%, var(--bg));
+  border-color: color-mix(in oklch, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+.score-pill.is-none {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.score-trend {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.score-trend.is-up { color: var(--success); }
+.score-trend.is-down { color: var(--danger); }
+.score-trend.is-flat { color: var(--text-3); }
+.score-trend.is-unknown { color: var(--text-3); }
+
+/* Comparação das escalas de pontualidade, nas Configurações › Faturação.
+   Tabela a sério porque é mesmo uma matriz com cabeçalhos nos dois eixos. */
+
+.scale-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.scale-compare {
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  /* Travada: esticada a toda a largura, os números ficavam longe do nome da
+     escala e a linha deixava de se seguir com o olho. */
+  max-width: 32rem;
+  width: 100%;
+}
+
+.scale-compare caption {
+  color: var(--text-3);
+  padding-bottom: var(--space-1);
+  text-align: left;
+}
+
+.scale-compare th,
+.scale-compare td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: center;
+}
+
+.scale-compare thead th {
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scale-compare tbody th,
+.scale-compare thead th:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scale-compare tbody td {
+  font-variant-numeric: tabular-nums;
+}
+
+.scale-compare .scale-ladder {
+  color: var(--text-3);
+  text-align: left;
+}
+
+/* A que está escolhida sustenta as letras que o Financeiro mostra. */
+.scale-compare tr.is-chosen th,
+.scale-compare tr.is-chosen td {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  color: var(--text);
+}
+
+.scale-compare tr.is-chosen th[scope='row'] {
+  font-weight: 700;
+}
+
+/* A escala em vigor, junto aos filtros do Comportamento. */
+.behaviour-scale {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  margin-left: auto;
+  white-space: nowrap;
+}

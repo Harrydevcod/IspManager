@@ -1,4 +1,5 @@
 import { Field, Select, Textarea, Toggle } from '../../components';
+import { PunctualityScaleField } from './PunctualityScaleField';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
 type BillingTabProps = {
@@ -62,6 +63,10 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         <option value="normal">Regime Normal (com IVA)</option>
         <option value="rempe">REMPE (isento IVA)</option>
       </Select>
+      <PunctualityScaleField
+        value={form.punctualityScale}
+        onChange={(scale) => onUpdate('punctualityScale', scale)}
+      />
       <Field
         label="Taxa de IVA (%)"
         required

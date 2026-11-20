@@ -1,3 +1,4 @@
+import type { PunctualityScale } from '../../../shared/payment-score';
 export type BankAccountForm = {
   bankName: string;
   accountName: string;
@@ -25,6 +26,7 @@ export type SettingsFormState = {
   receiptPrefix: string;
   ivaRate: string;
   fiscalRegime: 'normal' | 'rempe';
+  punctualityScale: PunctualityScale;
   showIva: boolean;
   printQrCode: boolean;
   printRentalLines: boolean;

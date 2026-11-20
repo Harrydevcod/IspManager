@@ -46,6 +46,15 @@ test('liga cada aba ao seu painel e só a escolhida entra no Tab', () => {
   expect(tab('Beta').tabIndex).toBe(-1);
 });
 
+test('mantém o nome acessível quando o texto da aba é escondido no ecrã estreito', () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  const tabs = [{ id: 'billing', label: <span style={{ display: 'none' }}>Faturação</span>, ariaLabel: 'Faturação' }] as const;
+  act(() => root!.render(<TabList idPrefix="t" label="Vistas" tabs={tabs} value="billing" onChange={() => {}} />));
+  expect(document.querySelector('[role="tab"]')?.getAttribute('aria-label')).toBe('Faturação');
+});
+
 test('as setas, Home e End escolhem a aba e levam o foco, dando a volta nas pontas', async () => {
   mount();
   tab('Alfa').focus();

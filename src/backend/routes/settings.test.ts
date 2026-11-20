@@ -25,6 +25,7 @@ const validSettings = {
   receiptPrefix: 'RC',
   ivaRate: 15,
   fiscalRegime: 'normal',
+  punctualityScale: 'exigente',
   showIva: false,
   printQrCode: false,
   legalNotes: '',
@@ -595,5 +596,37 @@ describe('canal WhatsApp', () => {
     expect(() => enqueueWhatsapp({ toPhone: '+2389911111', kind: 'text', body: 'x' })).toThrow('Canal WhatsApp desligado');
     const manual = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9911111', body: 'x' } });
     expect(manual.statusCode).toBe(409);
+  });
+});
+
+describe('escala da pontualidade', () => {
+  test('por escolher, o GET devolve a de omissao', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().punctualityScale).toBe('exigente');
+  });
+
+  test('guarda a escolha e devolve-a', async () => {
+    const put = await app.inject({
+      method: 'PUT', url: '/api/settings',
+      payload: { ...validSettings, punctualityScale: 'generosa' }
+    });
+    expect(put.statusCode).toBe(200);
+    const get = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(get.json().punctualityScale).toBe('generosa');
+  });
+
+  test('recusa uma escala que nao existe', async () => {
+    const response = await app.inject({
+      method: 'PUT', url: '/api/settings',
+      payload: { ...validSettings, punctualityScale: 'a do costume' }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('um valor estragado gravado a mao nao derruba o GET', async () => {
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('punctualityScale', 'lixo')").run();
+    const response = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(response.json().punctualityScale).toBe('exigente');
   });
 });

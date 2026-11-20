@@ -1,5 +1,8 @@
 import type { UpdateStatus } from '../shared/update-status';
 import type { BackgroundSettings, BackgroundSettingsChange } from '../shared/background-settings';
+import type {
+  FinancialState, PaymentClass, PaymentScore, PaymentTrend, PunctualityScale
+} from '../shared/payment-score';
 
 declare global {
   interface Window {
@@ -238,6 +241,35 @@ export type ReceivablesReport = {
   };
   aging: Record<AgingBucket, { invoices: number; amountCve: number }>;
   clients: ReceivableClient[];
+};
+
+/**
+ * Comportamento de pagamento. A forma da pontuação vem de `shared/payment-score.ts`,
+ * que é a fórmula — aqui só se acrescenta quem é o cliente e como está hoje.
+ */
+export type ClientBehaviour = PaymentScore & {
+  clientId: number;
+  clientName: string;
+  clientCode: string;
+  zone: string | null;
+  clientStatus: string;
+  state: FinancialState;
+  overdueCve: number;
+  trend: PaymentTrend;
+};
+
+export type PaymentBehaviourReport = {
+  generatedAt: string;
+  asOf: string;
+  scale: PunctualityScale;
+  totals: {
+    classified: number;
+    provisional: number;
+    avgScore: number;
+    inGoodStandingPct: number;
+    distribution: Record<PaymentClass, number>;
+  };
+  clients: ClientBehaviour[];
 };
 
 export type PaymentPlanStatus = 'em_dia' | 'em_atraso' | 'cumprido' | 'cancelado';

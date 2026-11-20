@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  DEFAULT_PUNCTUALITY_SCALE, PUNCTUALITY_SCALE_CODES, punctualityScaleOf
+} from '../../shared/payment-score';
 import { getSqliteDatabase } from '../db/database';
 import type Database from 'better-sqlite3';
 import { validateBackupDir } from '../lib/backup';
@@ -108,6 +111,9 @@ const settingsSchema = z.object({
   receiptPrefix: z.string().trim().min(1).max(8).refine((value) => !['TV', 'PR', 'OR', 'PF'].includes(value.toUpperCase()), 'TV, PR, OR e PF são reservados aos Talões de Venda e documentos informativos'),
   ivaRate: z.coerce.number().min(0).max(100),
   fiscalRegime: z.enum(['normal', 'rempe']),
+  // A escala de pontualidade da classificacao de clientes. Muda retroactivamente
+  // as letras de toda a gente: e uma regra de leitura, nao um dado gravado (ADR 0026).
+  punctualityScale: z.enum(PUNCTUALITY_SCALE_CODES as [string, ...string[]]),
   showIva: z.coerce.boolean(),
   printQrCode: z.coerce.boolean(),
   printRentalLines: strictOptionalBoolean,
@@ -252,6 +258,7 @@ const defaultSettings = {
   receiptPrefix: 'RC',
   ivaRate: 15,
   fiscalRegime: 'normal' as 'normal' | 'rempe',
+  punctualityScale: DEFAULT_PUNCTUALITY_SCALE as string,
   showIva: false,
   printQrCode: false,
   printRentalLines: false,
@@ -404,6 +411,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.whatsappChannelEnabled = row.value !== 'false';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
+      } else if (row.key === 'punctualityScale') {
+        settings.punctualityScale = punctualityScaleOf(row.value);
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled' || row.key === 'outageNoticesEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
