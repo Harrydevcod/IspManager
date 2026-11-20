@@ -8,7 +8,14 @@ import { PunctualityScaleField, ladderOf } from './PunctualityScaleField';
  * falhar, a escolha continua a fazer-se e cada escala diz o que perdoa.
  */
 const markup = (value: Parameters<typeof PunctualityScaleField>[0]['value'] = 'exigente') =>
-  renderToStaticMarkup(<PunctualityScaleField value={value} onChange={vi.fn()} />);
+  renderToStaticMarkup(
+    <PunctualityScaleField
+      value={value}
+      onChange={vi.fn()}
+      delayLimitDays="15"
+      onChangeDelayLimit={vi.fn()}
+    />
+  );
 
 describe('escala da pontualidade nas Configurações', () => {
   test('oferece as três escalas', () => {
@@ -42,5 +49,13 @@ describe('o resumo de uma escala', () => {
   test('as graduadas escrevem-se por degrau', () => {
     expect(ladderOf('exigente')).toBe('≤5d 70% · ≤15d 40% · ≤30d 15%');
     expect(ladderOf('generosa')).toBe('≤5d 85% · ≤15d 60% · ≤30d 35%');
+  });
+});
+
+describe('limite do atraso nas Configurações', () => {
+  test('mostra o valor em vigor num campo próprio', () => {
+    const html = markup();
+    expect(html).toContain('Atraso médio que vale zero (dias)');
+    expect(html).toContain('value="15"');
   });
 });

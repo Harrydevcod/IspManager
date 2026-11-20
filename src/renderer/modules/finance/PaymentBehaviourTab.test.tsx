@@ -24,13 +24,13 @@ const client = (over: Partial<ClientBehaviour>): ClientBehaviour => ({
   trend: 'flat',
   score: 100,
   letter: 'A',
-  provisional: false,
+  confidence: 'elevada',
   evaluated: 12,
   onTime: 12,
   settled: 12,
   punctualityPct: 100,
   avgDelayDays: 0,
-  cleanMonths: 6,
+  recentEvaluated: 6,
   parts: { punctuality: 40, delay: 25, settled: 20, regularity: 15 },
   ...over
 });
@@ -38,13 +38,17 @@ const client = (over: Partial<ClientBehaviour>): ClientBehaviour => ({
 const report: PaymentBehaviourReport = {
   generatedAt: '2026-11-20T00:00:00.000Z',
   asOf: '2026-11-20',
-  scale: 'exigente',
+  rules: { scale: 'exigente', delayLimitDays: 15 },
   totals: {
     classified: 3,
-    provisional: 1,
+    awaiting: 1,
     avgScore: 74,
     inGoodStandingPct: 33,
-    distribution: { A: 1, B: 1, C: 0, D: 0, E: 1 }
+    alwaysOnTimePct: 33,
+    improving: 1,
+    declining: 1,
+    distribution: { A: 1, B: 1, C: 0, D: 0, E: 1 },
+    overdueByClass: { A: 0, B: 0, C: 0, D: 0, E: 15000 }
   },
   clients: [
     client({
@@ -62,7 +66,7 @@ const report: PaymentBehaviourReport = {
     }),
     client({
       clientId: 4, clientName: 'Acabou de Entrar', clientCode: 'C0050', letter: null,
-      score: 35, provisional: true, evaluated: 1, onTime: 1, settled: 1, punctualityPct: 100
+      score: 0, confidence: null, evaluated: 0, onTime: 0, settled: 0, punctualityPct: 0
     })
   ]
 };
@@ -128,12 +132,12 @@ describe('Comportamento de pagamento', () => {
   });
 
   test('uma coluna por dado, cada uma com o seu cabecalho', async () => {
-    // Codigo, Pontualidade e Avaliadas comecam escondidas: as dez colunas nao
-    // cabem nos 918px que a tabela tem a 1225px de ecra.
+    // Codigo, Pontualidade, Atraso medio e Avaliadas comecam escondidas: as onze
+    // colunas nao cabem nos 918px que a tabela tem a 1225px de ecra.
     const container = await mount();
     const headers = [...container.querySelectorAll('[role="columnheader"]')].map((n) => n.textContent?.trim());
     expect(headers).toEqual([
-      'Cliente', 'Classe', 'Pontuação', 'Tendência', 'Atraso médio', 'Estado', 'Vencido'
+      'Cliente', 'Classe', 'Pontuação', 'Confiança', 'Tendência', 'Estado', 'Vencido'
     ]);
     for (const row of container.querySelectorAll('.data-table-row')) {
       expect(row.querySelectorAll('[role="cell"]')).toHaveLength(headers.length);
@@ -187,9 +191,9 @@ describe('Comportamento de pagamento', () => {
     expect(rowNames(container)).toEqual(['Antonio Silva']);
   });
 
-  test('filtrar por sem historico mostra so os provisorios', async () => {
+  test('filtrar por quem aguarda avaliacao mostra so esses', async () => {
     const container = await mount();
-    await clickButton(container, 'Sem histórico (1)');
+    await clickButton(container, 'Aguarda avaliação (1)');
     expect(rowNames(container)).toEqual(['Acabou de Entrar']);
   });
 
@@ -203,9 +207,10 @@ describe('Comportamento de pagamento', () => {
     expect(onOpenClient).toHaveBeenCalledWith(3);
   });
 
-  test('diz com que escala as letras foram feitas', async () => {
+  test('diz com que regras as letras foram feitas', async () => {
     const container = await mount();
-    expect(container.querySelector('.behaviour-scale')?.textContent).toBe('Escala exigente');
+    expect(container.querySelector('.behaviour-scale')?.textContent)
+      .toBe('Escala exigente · atraso zero aos 15 dias');
   });
 
   test('um erro da API deixa tentar outra vez em vez de um ecra vazio', async () => {

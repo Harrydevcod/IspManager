@@ -26,6 +26,7 @@ const validSettings = {
   ivaRate: 15,
   fiscalRegime: 'normal',
   punctualityScale: 'exigente',
+  punctualityDelayLimitDays: 15,
   showIva: false,
   printQrCode: false,
   legalNotes: '',
