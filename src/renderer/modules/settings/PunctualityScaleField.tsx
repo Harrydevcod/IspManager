@@ -60,7 +60,6 @@ export function PunctualityScaleField({
       <div className="scale-field-rules">
         <Select
           label="Escala da pontualidade"
-          hint="Muda as letras de todos os clientes, histórico incluído."
           value={value}
           onChange={(event) => onChange(event.target.value as PunctualityScale)}
         >
@@ -79,6 +78,8 @@ export function PunctualityScaleField({
           onChange={(event) => onChangeDelayLimit(event.target.value)}
         />
       </div>
+      {/* A dica é das duas regras: mexer em qualquer uma reescreve as letras. */}
+      <span className="field-hint">Mudam as letras de todos os clientes, histórico incluído.</span>
 
       <table className="scale-compare">
         <caption>{classified > 0 ? `A sua carteira, ${classified} classificados` : 'O que cada escala perdoa'}</caption>

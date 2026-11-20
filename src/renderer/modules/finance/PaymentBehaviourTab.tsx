@@ -244,9 +244,11 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
         />
         {/* Sem isto as letras não se explicam a quem não abriu as Configurações. */}
         {report && (
-          <span className="behaviour-scale" title="Configurações › Faturação">
-            Escala {PUNCTUALITY_SCALE_LABELS[report.rules.scale].toLowerCase()}
-            {' · '}atraso zero aos {report.rules.delayLimitDays} dias
+          <span
+            className="behaviour-scale"
+            title="Escala da pontualidade e atraso médio que vale zero — Configurações › Faturação"
+          >
+            {PUNCTUALITY_SCALE_LABELS[report.rules.scale]} · atraso {report.rules.delayLimitDays} d
           </span>
         )}
       </FilterBar>

@@ -7753,6 +7753,10 @@ button.danger:disabled {
 .scale-field-rules {
   display: flex;
   flex-wrap: wrap;
+  /* Pelo fundo, não pelo topo: a etiqueta do limite ocupa duas linhas e a da
+     escala uma só, e alinhados pelo topo os dois campos ficavam a alturas
+     diferentes. É nas caixas que o olho pousa. */
+  align-items: end;
   gap: var(--space-3);
 }
 
@@ -7818,6 +7822,14 @@ button.danger:disabled {
 
 .scale-compare tr.is-chosen th[scope='row'] {
   font-weight: 700;
+}
+
+/* Seis filtros de classe, o selector de colunas e as regras em vigor não cabem
+   numa linha a 1225 px. A barra parte, em vez de empurrar o módulo para fora do
+   ecrã: sem isto, a `.filter-bar` (que é `nowrap`) alargava o módulo inteiro e
+   punha scroll horizontal na página toda, não na barra. */
+.behaviour-module .filter-bar {
+  flex-wrap: wrap;
 }
 
 /* A escala em vigor, junto aos filtros do Comportamento. */

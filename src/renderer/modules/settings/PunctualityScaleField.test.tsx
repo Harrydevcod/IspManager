@@ -27,7 +27,7 @@ describe('escala da pontualidade nas Configurações', () => {
   });
 
   test('avisa que a mudança é retroativa', () => {
-    expect(markup()).toContain('Muda as letras de todos os clientes, histórico incluído.');
+    expect(markup()).toContain('Mudam as letras de todos os clientes, histórico incluído.');
   });
 
   test('a escolhida fica marcada na comparação', () => {

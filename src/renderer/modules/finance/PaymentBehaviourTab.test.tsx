@@ -168,7 +168,7 @@ describe('Comportamento de pagamento', () => {
     const container = await mount();
     const row = [...container.querySelectorAll('.data-table-row')]
       .find((r) => r.textContent?.includes('Acabou de Entrar'));
-    expect(row?.querySelector('[data-label="Classe"]')?.textContent).toBe('Sem histórico');
+    expect(row?.querySelector('[data-label="Classe"]')?.textContent).toBe('Por avaliar');
     expect(row?.querySelector('[data-label="Pontuação"]')?.textContent).toBe('—');
   });
 
@@ -210,7 +210,7 @@ describe('Comportamento de pagamento', () => {
   test('diz com que regras as letras foram feitas', async () => {
     const container = await mount();
     expect(container.querySelector('.behaviour-scale')?.textContent)
-      .toBe('Escala exigente · atraso zero aos 15 dias');
+      .toBe('Exigente · atraso 15 d');
   });
 
   test('um erro da API deixa tentar outra vez em vez de um ecra vazio', async () => {
