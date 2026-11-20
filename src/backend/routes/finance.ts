@@ -22,6 +22,7 @@ import {
   settleInvoices,
   voidReceipt
 } from '../lib/payments';
+import { loadPaymentBehaviour } from '../lib/payment-behaviour';
 import { loadReceivables } from '../lib/receivables';
 import { loadClientFinance } from '../lib/client-finance';
 import { cancelPaymentPlan, cancelPaymentPlanSchema, createPaymentPlan, createPaymentPlanSchema } from '../lib/payment-plans';
@@ -907,6 +908,16 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
   app.get('/api/receivables', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     return loadReceivables(getSqliteDatabase());
   });
+
+  // De quem se pode confiar: a letra de cada cliente e o que a sustenta. O `asOf`
+  // existe porque a pontuação é derivada — serve para ver a carteira a uma data passada.
+  app.get('/api/finance/payment-behaviour', { preHandler: requireRole(['admin', 'operator']) },
+    async (request, reply) => {
+      const parsed = z.object({ asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+        .strict().safeParse(request.query);
+      if (!parsed.success) return reply.status(400).send({ error: 'Data invalida' });
+      return loadPaymentBehaviour(getSqliteDatabase(), { asOf: parsed.data.asOf });
+    });
 
   app.get('/api/clients/:id/finance', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);

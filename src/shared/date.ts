@@ -89,6 +89,18 @@ export function todayStartUtc(now: Date): number {
   return dayStartUtc(businessDay(now))!;
 }
 
+/**
+ * Dias de `from` até `to`, ambos `AAAA-MM-DD`: positivo se `to` é depois.
+ * `null` se alguma das datas não existir — quem chama decide o que fazer com isso,
+ * porque "zero dias" e "data inválida" nunca são a mesma resposta.
+ */
+export function daysApart(from: string, to: string): number | null {
+  const a = dayStartUtc(from);
+  const b = dayStartUtc(to);
+  if (a === null || b === null) return null;
+  return Math.round((b - a) / 86_400_000);
+}
+
 /** `AAAA-MM-DD` → `DD-MM-AAAA`; devolve `-` se não houver data. */
 export function labelDay(iso: string | null | undefined): string {
   if (!iso) return '-';
