@@ -1,5 +1,5 @@
 import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, Gauge, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
-import { DEFAULT_PUNCTUALITY_SCALE } from '../../shared/payment-score';
+import { DEFAULT_DELAY_LIMIT_DAYS, DEFAULT_PUNCTUALITY_SCALE } from '../../shared/payment-score';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -122,6 +122,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     ivaRate: '15',
     fiscalRegime: 'normal',
     punctualityScale: DEFAULT_PUNCTUALITY_SCALE,
+    punctualityDelayLimitDays: String(DEFAULT_DELAY_LIMIT_DAYS),
     showIva: false,
     printQrCode: false,
     printRentalLines: false,
@@ -458,7 +459,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId' | 'vinti4TreasuryAccountId'> & { stripeTreasuryAccountId: number; vinti4TreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'punctualityDelayLimitDays' | 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId' | 'vinti4TreasuryAccountId'> & { punctualityDelayLimitDays: number; stripeTreasuryAccountId: number; vinti4TreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -466,6 +467,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           bankAccounts: Array.isArray(settings.bankAccounts) ? settings.bankAccounts : [],
           defaultDueDay: String(settings.defaultDueDay),
           autoBillingDay: String(settings.autoBillingDay),
+          punctualityDelayLimitDays: String(settings.punctualityDelayLimitDays),
           audiovisualMonthlyCve: String(settings.audiovisualMonthlyCve),
           audiovisualAnnualCve: String(settings.audiovisualAnnualCve),
           installationFeeCve: String(settings.installationFeeCve),
@@ -617,6 +619,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           vinti4TreasuryAccountId: Number(savedForm.vinti4TreasuryAccountId) || 0,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
+          punctualityDelayLimitDays: Number(savedForm.punctualityDelayLimitDays),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
           audiovisualAnnualCve: Number(savedForm.audiovisualAnnualCve),
           installationFeeCve: Number(savedForm.installationFeeCve),

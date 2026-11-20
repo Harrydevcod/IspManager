@@ -27,6 +27,7 @@ export type SettingsFormState = {
   ivaRate: string;
   fiscalRegime: 'normal' | 'rempe';
   punctualityScale: PunctualityScale;
+  punctualityDelayLimitDays: string;
   showIva: boolean;
   printQrCode: boolean;
   printRentalLines: boolean;

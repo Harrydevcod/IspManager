@@ -1,10 +1,10 @@
 import type { Database } from 'better-sqlite3';
-import { SQL_BUSINESS_TODAY, businessDay } from '../../shared/business-day';
+import { businessDay } from '../../shared/business-day';
 import {
   PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_CODES, SCORE_WINDOW_MONTHS,
-  monthsBefore, punctualityScaleOf, scoreClient, trendFor,
+  delayLimitOf, monthsBefore, punctualityScaleOf, scoreClient, trendFor,
   type FinancialState, type InvoiceFact, type PaymentClass, type PaymentScore,
-  type PaymentTrend, type PunctualityScale
+  type PaymentTrend, type PunctualityScale, type ScoreRules
 } from '../../shared/payment-score';
 import { balanceSqlExpr, overdueSqlPredicate } from './payments';
 
@@ -36,34 +36,45 @@ export type ClientBehaviour = PaymentScore & {
   trend: PaymentTrend;
 };
 
-/** A chave em `app_settings`; a escolha vive em Configurações › Faturação. */
+/** As chaves em `app_settings`; as escolhas vivem em Configurações › Faturação. */
 export const PUNCTUALITY_SCALE_KEY = 'punctualityScale';
+export const DELAY_LIMIT_KEY = 'punctualityDelayLimitDays';
 
 /**
- * A escala em vigor. Como em quinze outros módulos deste repo, a leitura de
- * `app_settings` é local — um valor por ler ou estragado cai na de omissão, que
- * é o que mantém a carteira classificada mesmo numa instalação acabada de abrir.
+ * As regras em vigor. Como em quinze outros módulos deste repo, a leitura de
+ * `app_settings` é local — um valor por ler ou estragado cai na omissão, que é
+ * o que mantém a carteira classificada mesmo numa instalação acabada de abrir.
  */
-export function currentPunctualityScale(db: Database): PunctualityScale {
-  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?')
-    .get(PUNCTUALITY_SCALE_KEY) as { value: string } | undefined;
-  return punctualityScaleOf(row?.value.trim());
+export function currentScoreRules(db: Database): ScoreRules {
+  const read = db.prepare('SELECT value FROM app_settings WHERE key = ?');
+  const scale = read.get(PUNCTUALITY_SCALE_KEY) as { value: string } | undefined;
+  const limit = read.get(DELAY_LIMIT_KEY) as { value: string } | undefined;
+  return {
+    scale: punctualityScaleOf(scale?.value.trim()),
+    delayLimitDays: delayLimitOf(limit?.value.trim())
+  };
 }
 
 export type PaymentBehaviourReport = {
   generatedAt: string;
   asOf: string;
-  /** A escala com que estas letras foram calculadas. */
-  scale: PunctualityScale;
+  /** As regras com que estas letras foram calculadas. */
+  rules: ScoreRules;
   totals: {
-    /** Clientes com classificação consolidada (histórico bastante). */
+    /** Clientes com letra — basta uma mensalidade avaliável. */
     classified: number;
-    /** Clientes ainda sem histórico para uma letra. */
-    provisional: number;
+    /** Clientes sem nada para julgar: aguardam a primeira avaliação. */
+    awaiting: number;
     avgScore: number;
     /** Percentagem de clientes classificados que estão em dia hoje. */
     inGoodStandingPct: number;
+    /** Percentagem dos classificados que nunca pagaram uma mensalidade tarde. */
+    alwaysOnTimePct: number;
+    improving: number;
+    declining: number;
     distribution: Record<PaymentClass, number>;
+    /** Dívida vencida de hoje, por categoria: onde é que o risco tem dinheiro. */
+    overdueByClass: Record<PaymentClass, number>;
   };
   clients: ClientBehaviour[];
 };
@@ -83,7 +94,12 @@ type ClientRow = {
  * Talões de venda são venda à vista, e `INSTALACAO` e `AVULSA-<id>` não são
  * mensalidades — contá-los desalinhava a contagem por mês de quem só tem um
  * serviço. Anuladas ficam de fora porque um erro nosso não pode prejudicar
- * ninguém, e o que ainda não venceu não se julga.
+ * ninguém.
+ *
+ * O que ainda não venceu não se corta aqui: quem decide é `outcomeFor`, que tem
+ * os recibos à mão e sabe distinguir a que ainda não venceu nem foi paga — que
+ * não se julga — da que foi paga adiantada, que já conta. A regra fica num
+ * sítio só, em vez de meia em SQL e meia em TypeScript.
  */
 function loadFacts(db: Database, since: string, clientId?: number) {
   const clientFilter = clientId === undefined ? '' : 'AND p.client_id = ?';
@@ -97,7 +113,6 @@ function loadFacts(db: Database, since: string, clientId?: number) {
       AND p.status <> 'cancelled'
       AND COALESCE(p.document_type, 'invoice') = 'invoice'
       AND p.reference_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'
-      AND date(p.due_date) <= ${SQL_BUSINESS_TODAY}
       AND p.due_date >= ?
       ${clientFilter}
     ORDER BY p.due_date
@@ -159,17 +174,17 @@ function stateOf(row: ClientRow): FinancialState {
 /** `clientId` restringe a um cliente (ficha financeira); sem ele, a carteira toda. */
 export function loadPaymentBehaviour(
   db: Database,
-  options: { asOf?: string; clientId?: number; scale?: PunctualityScale } = {}
+  options: { asOf?: string; clientId?: number; rules?: ScoreRules } = {}
 ): PaymentBehaviourReport {
   const asOf = options.asOf ?? businessDay();
-  const scale = options.scale ?? currentPunctualityScale(db);
+  const rules = options.rules ?? currentScoreRules(db);
   const since = monthsBefore(asOf, FACT_WINDOW_MONTHS);
   const facts = loadFacts(db, since, options.clientId);
 
   const clients: ClientBehaviour[] = loadClients(db, options.clientId).map((row) => {
     const invoices = facts.get(row.clientId) ?? [];
     return {
-      ...scoreClient(invoices, asOf, scale),
+      ...scoreClient(invoices, asOf, rules),
       clientId: row.clientId,
       clientName: row.clientName,
       clientCode: row.clientCode,
@@ -177,31 +192,34 @@ export function loadPaymentBehaviour(
       clientStatus: row.clientStatus,
       state: stateOf(row),
       overdueCve: money(row.overdueCve),
-      trend: trendFor(invoices, asOf, scale)
+      trend: trendFor(invoices, asOf, rules)
     };
   });
 
   const classified = clients.filter((client) => client.letter !== null);
-  const distribution = Object.fromEntries(
-    PAYMENT_CLASS_LETTERS.map((letter) => [letter, classified.filter((c) => c.letter === letter).length])
-  ) as Record<PaymentClass, number>;
+  const share = (count: number) => (classified.length ? Math.round((count / classified.length) * 100) : 0);
+  const byClass = <T>(pick: (rows: ClientBehaviour[]) => T) => Object.fromEntries(
+    PAYMENT_CLASS_LETTERS.map((letter) => [letter, pick(classified.filter((c) => c.letter === letter))])
+  ) as Record<PaymentClass, T>;
 
   return {
     generatedAt: new Date().toISOString(),
     asOf,
-    scale,
+    rules,
     totals: {
       classified: classified.length,
-      provisional: clients.length - classified.length,
-      // A média é dos classificados: incluir quem ainda não tem histórico
+      awaiting: clients.length - classified.length,
+      // A média é dos classificados: incluir quem não tem nada para julgar
       // puxava a carteira para baixo com zeros que não são dívida de ninguém.
       avgScore: classified.length
         ? Math.round(classified.reduce((sum, c) => sum + c.score, 0) / classified.length)
         : 0,
-      inGoodStandingPct: classified.length
-        ? Math.round((classified.filter((c) => c.state === 'em_dia').length / classified.length) * 100)
-        : 0,
-      distribution
+      inGoodStandingPct: share(classified.filter((c) => c.state === 'em_dia').length),
+      alwaysOnTimePct: share(classified.filter((c) => c.punctualityPct === 100).length),
+      improving: classified.filter((c) => c.trend === 'up').length,
+      declining: classified.filter((c) => c.trend === 'down').length,
+      distribution: byClass((rows) => rows.length),
+      overdueByClass: byClass((rows) => money(rows.reduce((sum, c) => sum + c.overdueCve, 0)))
     },
     clients
   };
@@ -228,11 +246,14 @@ export type ScaleDistribution = {
  */
 export function punctualityScaleDistributions(db: Database, asOf?: string): ScaleDistribution[] {
   const at = asOf ?? businessDay();
+  // O limite de atraso em vigor entra na comparação: o que se está a escolher
+  // aqui é a escala, e as duas colunas têm de variar uma de cada vez.
+  const { delayLimitDays } = currentScoreRules(db);
   const facts = loadFacts(db, monthsBefore(at, FACT_WINDOW_MONTHS));
   const clients = loadClients(db).map((row) => facts.get(row.clientId) ?? []);
 
   return PUNCTUALITY_SCALE_CODES.map((scale) => {
-    const letters = clients.map((invoices) => scoreClient(invoices, at, scale).letter);
+    const letters = clients.map((invoices) => scoreClient(invoices, at, { scale, delayLimitDays }).letter);
     const classified = letters.filter((letter) => letter !== null);
     return {
       scale,

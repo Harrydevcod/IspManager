@@ -40,6 +40,14 @@ milissegundos para a carteira inteira. É a mesma política de
 `operations-status.ts` e `receivables.ts`, que também não têm cache — um valor
 de há cinco minutos numa conversa de cobrança é pior do que valor nenhum.
 
+**A atualização automática não existe porque não é precisa.** O pedido original
+listava sete eventos que deviam disparar um recálculo — pagamento, liquidação,
+pagamento parcial, vencimento, estorno, anulação, alteração de vencimento — e
+ainda uma reconciliação diária para apanhar o que escapasse. Calculando na
+leitura, os sete acontecem sozinhos e a reconciliação não tem o que reconciliar:
+não há segundo valor que possa ficar atrasado. É o requisito a desaparecer, não
+a ser cumprido.
+
 ## Consequências
 
 - A letra não se pode usar como prova contratual de um estado passado: ela
@@ -50,7 +58,18 @@ de há cinco minutos numa conversa de cobrança é pior do que valor nenhum.
   carteira. Serve para a vista do Financeiro; uma listagem paginada no servidor
   que precise de ordenar por pontuação obrigaria a projetar o valor em SQL.
 - Mexer na fórmula muda retroativamente todas as letras. É deliberado: a fórmula
-  é uma regra de leitura, não um dado histórico.
+  é uma regra de leitura, não um dado histórico. É também o que trava a
+  configuração: a escala da pontualidade e o limite do atraso escolhem-se em
+  Configurações › Faturação porque não têm resposta certa e foram medidos na
+  carteira real, mas os pesos e os cortes A–E ficam fixos — um utilizador a
+  mexer nos pesos reescrevia o histórico de toda a gente e a letra A deixava de
+  significar o mesmo de um mês para o outro. A auditoria dessas duas escolhas é
+  a da rota agregada das definições, que já grava quem mudou o quê e quando.
+- **Não há histórico mínimo.** A letra atribui-se desde a primeira mensalidade
+  avaliável, por decisão do utilizador a 20/11: esconder a classificação até
+  haver três faturas é esconder o que já se sabe de quem acabou de entrar. A
+  maturidade do histórico diz-se ao lado, no nível de confiança — e um 100
+  tirado de uma mensalidade lê-se como "Inicial", não como "Elevada".
 
 ## Alternativas consideradas
 

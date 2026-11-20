@@ -66,6 +66,8 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
       <PunctualityScaleField
         value={form.punctualityScale}
         onChange={(scale) => onUpdate('punctualityScale', scale)}
+        delayLimitDays={form.punctualityDelayLimitDays}
+        onChangeDelayLimit={(days) => onUpdate('punctualityDelayLimitDays', days)}
       />
       <Field
         label="Taxa de IVA (%)"

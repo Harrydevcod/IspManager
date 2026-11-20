@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
-  DEFAULT_PUNCTUALITY_SCALE, PUNCTUALITY_SCALE_CODES, punctualityScaleOf
+  DEFAULT_DELAY_LIMIT_DAYS, DEFAULT_PUNCTUALITY_SCALE, DELAY_LIMIT_RANGE,
+  PUNCTUALITY_SCALE_CODES, delayLimitOf, punctualityScaleOf
 } from '../../shared/payment-score';
 import { getSqliteDatabase } from '../db/database';
 import type Database from 'better-sqlite3';
@@ -114,6 +115,10 @@ const settingsSchema = z.object({
   // A escala de pontualidade da classificacao de clientes. Muda retroactivamente
   // as letras de toda a gente: e uma regra de leitura, nao um dado gravado (ADR 0026).
   punctualityScale: z.enum(PUNCTUALITY_SCALE_CODES as [string, ...string[]]),
+  // Atraso medio a partir do qual esse criterio vale zero. Mesma natureza da
+  // escala: retroactivo por ser regra de leitura.
+  punctualityDelayLimitDays: z.coerce.number().int()
+    .min(DELAY_LIMIT_RANGE.min).max(DELAY_LIMIT_RANGE.max),
   showIva: z.coerce.boolean(),
   printQrCode: z.coerce.boolean(),
   printRentalLines: strictOptionalBoolean,
@@ -259,6 +264,7 @@ const defaultSettings = {
   ivaRate: 15,
   fiscalRegime: 'normal' as 'normal' | 'rempe',
   punctualityScale: DEFAULT_PUNCTUALITY_SCALE as string,
+  punctualityDelayLimitDays: DEFAULT_DELAY_LIMIT_DAYS,
   showIva: false,
   printQrCode: false,
   printRentalLines: false,
@@ -413,6 +419,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'punctualityScale') {
         settings.punctualityScale = punctualityScaleOf(row.value);
+      } else if (row.key === 'punctualityDelayLimitDays') {
+        settings.punctualityDelayLimitDays = delayLimitOf(row.value);
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled' || row.key === 'outageNoticesEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
