@@ -253,6 +253,36 @@ describe('GET /api/receivables', () => {
   });
 });
 
+describe('GET /api/finance/payment-behaviour', () => {
+  test('a carteira traz as regras em vigor e a distribuicao', async () => {
+    seed();
+    const body = (await app.inject({ method: 'GET', url: '/api/finance/payment-behaviour' })).json();
+    expect(body.rules).toMatchObject({ scale: 'exigente', delayLimitDays: 15 });
+    expect(body.totals).toHaveProperty('awaiting');
+    expect(body.totals).toHaveProperty('overdueByClass');
+  });
+
+  test('a ficha de um cliente traz a evolucao mes a mes', async () => {
+    const { clientId } = seed();
+    const body = (await app.inject({ method: 'GET', url: `/api/finance/payment-behaviour/${clientId}` })).json();
+    expect(body.clientId).toBe(clientId);
+    expect(body.history).toHaveLength(12);
+    expect(body.history[0]).toHaveProperty('month');
+  });
+
+  test('um cliente que nao existe da 404, e um id invalido da 400', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/finance/payment-behaviour/99999' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/finance/payment-behaviour/zero' })).statusCode).toBe(400);
+  });
+
+  test('a rota /history e a evolucao da carteira, nao um cliente chamado history', async () => {
+    seed();
+    const body = (await app.inject({ method: 'GET', url: '/api/finance/payment-behaviour/history' })).json();
+    expect(body.months).toHaveLength(12);
+    expect(body.months[0]).toHaveProperty('distribution');
+  });
+});
+
 describe('PDF do recibo', () => {
   test('imprime o recibo pelo seu id, mesmo com a fatura ainda em aberto', async () => {
     const { paymentId } = seed();

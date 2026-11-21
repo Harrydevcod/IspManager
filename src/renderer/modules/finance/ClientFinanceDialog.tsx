@@ -18,6 +18,9 @@ import {
 } from '../../components';
 import type { DataTableColumn, DataTableSelection } from '../../components/DataTable';
 import { authFetch } from '../../lib/auth';
+import { useBehaviourIndex } from '../../lib/behaviourIndex';
+import { ClientBehaviourPanel } from './ClientBehaviourPanel';
+import { ScorePill } from './ScorePill';
 import { formatCve, formatPtDate, formatPtDateTime, formatPtMonth } from '../../lib/format';
 import { businessDay } from '../../../shared/business-day';
 import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, scheduleError, splitInstallments } from '../../../shared/payment-plan';
@@ -34,7 +37,7 @@ import {
 
 const API = 'http://127.0.0.1:3001/api';
 
-type Tab = 'faturas' | 'pagamentos' | 'avisos' | 'acordo';
+type Tab = 'faturas' | 'pagamentos' | 'avisos' | 'acordo' | 'comportamento';
 type Tone = 'success' | 'info' | 'warn' | 'danger' | 'neutral';
 
 type Receipt = ClientFinance['receipts'][number];
@@ -181,6 +184,7 @@ type ClientFinanceDialogProps = {
 
 export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenClient }: ClientFinanceDialogProps) {
   const [finance, setFinance] = useState<ClientFinance | null>(null);
+  const behaviour = useBehaviourIndex();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('faturas');
 
@@ -229,6 +233,10 @@ export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenCl
             {finance.client.code && <span className="entity-code">{finance.client.code}</span>}
             {finance.client.phone && <span>{finance.client.phone}</span>}
             {finance.client.zone && <span>{finance.client.zone}</span>}
+            {/* A letra ao lado do nome, antes de qualquer conversa de cobrança. */}
+            {behaviour.byClient.has(clientId) && (
+              <ScorePill letter={behaviour.byClient.get(clientId)!.letter} />
+            )}
             {activePlan && <Badge tone={PLAN_STATUS[activePlan.status].tone}>{PLAN_STATUS[activePlan.status].label}</Badge>}
           </div>
 
@@ -273,7 +281,8 @@ export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenCl
               { id: 'faturas', label: `Faturas em aberto (${finance.invoices.length})` },
               { id: 'pagamentos', label: `Pagamentos (${finance.receipts.length})` },
               { id: 'avisos', label: `Avisos (${finance.notices.length})` },
-              { id: 'acordo', label: 'Acordo de pagamento' }
+              { id: 'acordo', label: 'Acordo de pagamento' },
+              { id: 'comportamento', label: 'Comportamento' }
             ]}
           />
 
@@ -307,6 +316,7 @@ export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenCl
                 empty={<EmptyState size="sm" icon={AlertTriangle} title="Nenhum aviso enviado" />}
               />
             )}
+            {tab === 'comportamento' && <ClientBehaviourPanel clientId={clientId} />}
             {tab === 'acordo' && (
               <PaymentPlanPanel finance={finance} activePlan={activePlan} onChanged={load} />
             )}

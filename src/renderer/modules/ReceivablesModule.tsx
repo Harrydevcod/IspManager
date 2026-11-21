@@ -10,11 +10,17 @@ import {
   FilterBar,
   MetricCard,
   MetricGrid,
+  Select,
   SkeletonList
 } from '../components';
 import type { DataTableColumn } from '../components/DataTable';
 import { authFetch } from '../lib/auth';
 import { useColumnVisibility } from '../lib/columnVisibility';
+import { useBehaviourIndex } from '../lib/behaviourIndex';
+import {
+  BEHAVIOUR_HEADERS, BEHAVIOUR_HIDDEN, BEHAVIOUR_WIDTHS, behaviourColumns
+} from './finance/behaviourColumns';
+import { PAYMENT_CLASS_LETTERS, type PaymentClass } from '../../shared/payment-score';
 import { formatCve, formatPtDate } from '../lib/format';
 import { AGING_LABELS, type AgingBucket, type ReceivableClient, type ReceivablesReport } from '../types';
 
@@ -81,14 +87,22 @@ const RECEIVABLE_COLUMNS: DataTableColumn<ReceivableClient>[] = [
   }
 ];
 
-const RECEIVABLE_HEADERS = RECEIVABLE_COLUMNS.map((column) => column.header);
+const RECEIVABLE_HEADERS = [...RECEIVABLE_COLUMNS, ...BEHAVIOUR_HEADERS.map((header) => ({ header }))]
+  .map((column) => column.header);
+
+/* Codigo ja comecava a mais; junta-se-lhe o detalhe da classificacao. */
+const RECEIVABLE_HIDDEN = BEHAVIOUR_HIDDEN;
 
 export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: number) => void } = {}) {
   const [report, setReport] = useState<ReceivablesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bucketFilter, setBucketFilter] = useState<AgingBucket | 'all'>('all');
-  const columnVisibility = useColumnVisibility('ispm.finance.receivables.hiddenColumns', RECEIVABLE_HEADERS);
+  const [classFilter, setClassFilter] = useState<PaymentClass | 'all'>('all');
+  const behaviour = useBehaviourIndex();
+  const columnVisibility = useColumnVisibility(
+    'ispm.finance.receivables.hiddenColumns', RECEIVABLE_HEADERS, RECEIVABLE_HIDDEN
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,9 +124,20 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
   useEffect(() => { void load(); }, [load]);
 
   const rows = useMemo(() => {
-    const all = report?.clients || [];
-    return bucketFilter === 'all' ? all : all.filter((c) => c.bucket === bucketFilter);
-  }, [report, bucketFilter]);
+    let all = report?.clients || [];
+    if (bucketFilter !== 'all') all = all.filter((c) => c.bucket === bucketFilter);
+    if (classFilter !== 'all') {
+      all = all.filter((c) => behaviour.byClient.get(c.clientId)?.letter === classFilter);
+    }
+    return all;
+  }, [report, bucketFilter, classFilter, behaviour.byClient]);
+
+  // As colunas da classificacao mudam quando o indice chega; sem o memo, a
+  // tabela reordenava-se a cada render.
+  const columns = useMemo(
+    () => [...RECEIVABLE_COLUMNS, ...behaviourColumns<ReceivableClient>((c) => c.clientId, behaviour)],
+    [behaviour]
+  );
 
   if (loadError && !report) {
     return <ErrorRetry message={loadError} onRetry={() => { void load(); }} />;
@@ -184,6 +209,19 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
             </Button>
           );
         })}
+        {/* Quem cobra decide a quem liga primeiro: um D com uma fatura vencida
+            nao e o mesmo caso que um A com a mesma fatura. */}
+        <Select
+          label="Classe"
+          hideLabel
+          value={classFilter}
+          onChange={(event) => setClassFilter(event.target.value as PaymentClass | 'all')}
+        >
+          <option value="all">Todas as classes</option>
+          {PAYMENT_CLASS_LETTERS.map((letter) => (
+            <option key={letter} value={letter}>Classe {letter}</option>
+          ))}
+        </Select>
         <ColumnPicker
           headers={RECEIVABLE_HEADERS}
           hidden={columnVisibility.hidden}
@@ -198,18 +236,20 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
         defaultSort={{ key: 'Em aberto', direction: 'desc' }}
         onRowClick={onOpenClient ? (c) => onOpenClient(c.clientId) : undefined}
         // Cliente e Zona encolhem com reticências; o resto tem a largura do seu dado.
-        gridTemplateColumns="80px minmax(112px, 1.5fr) minmax(0, 0.8fr) 104px 80px 108px 132px 116px 104px"
+        gridTemplateColumns={`80px minmax(112px, 1.5fr) minmax(0, 0.8fr) 104px 80px 108px 132px 116px 104px ${BEHAVIOUR_WIDTHS}`}
         empty={
           <EmptyState
             title="Nada por cobrar"
             description={
               bucketFilter === 'all'
                 ? 'Nenhum cliente tem faturas com saldo em aberto.'
-                : 'Nenhum cliente neste intervalo de antiguidade.'
+                : classFilter !== 'all'
+                  ? 'Nenhum cliente desta classe com faturas em aberto.'
+                  : 'Nenhum cliente neste intervalo de antiguidade.'
             }
           />
         }
-        columns={RECEIVABLE_COLUMNS}
+        columns={columns}
         hiddenColumns={columnVisibility.hidden}
       />
     </div>

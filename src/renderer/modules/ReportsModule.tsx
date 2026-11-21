@@ -7,6 +7,7 @@ import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsapp } from '../lib/whatsapp';
 import { referenceMonthLabel } from '../../shared/billing-period';
 import { OperationsStatusPanel } from './reports/OperationsStatusPanel';
+import { BehaviourReportPanel } from './reports/BehaviourReportPanel';
 import type { DataQualityIncompleteFlag, DataQualitySummary, ReportsSummary, ReportView } from '../types';
 
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
@@ -15,7 +16,7 @@ const PAGE_SIZE = 20;
 
 export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: number) => void } = {}) {
   const [summary, setSummary] = useState<ReportsSummary | null>(null);
-  type Tab = ReportView | 'incomplete' | 'duplicates' | 'operations';
+  type Tab = ReportView | 'incomplete' | 'duplicates' | 'operations' | 'comportamento';
   // "Operação" arranca em primeiro: é a única vista viva, e é a que responde à
   // pergunta com que se abre o módulo — o que exige decisão agora.
   const [view, setView] = useState<Tab>('operations');
@@ -37,6 +38,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     // "Operação" tem o seu próprio ciclo de vida (polling); as vistas de
     // qualidade de dados usam o endpoint seguinte. Só as restantes vêm daqui.
     if (view === 'incomplete' || view === 'duplicates' || view === 'operations') return;
+    if (view === 'comportamento') return;
     const params = new URLSearchParams({
       view,
       page: String(page),
@@ -116,7 +118,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   function exportCsv() {
     // "Operação" exporta em PDF a partir do próprio painel — o seu conteúdo é
     // narrativo (riscos, ações) e não cabe numa grelha de células.
-    if (view === 'operations') return;
+    if (view === 'operations' || view === 'comportamento') return;
     if ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) {
       return;
     }
@@ -204,12 +206,13 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
               <Button variant="ghost" size="sm" className={view === 'operations' ? 'active' : ''} onClick={() => changeView('operations')}>Operacao</Button>
               <Button variant="ghost" size="sm" className={view === 'revenue' ? 'active' : ''} onClick={() => changeView('revenue')}>Receita</Button>
               <Button variant="ghost" size="sm" className={view === 'overdue' ? 'active' : ''} onClick={() => changeView('overdue')}>Atrasos</Button>
+              <Button variant="ghost" size="sm" className={view === 'comportamento' ? 'active' : ''} onClick={() => changeView('comportamento')}>Comportamento</Button>
               <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
               <Button variant="ghost" size="sm" className={view === 'incomplete' ? 'active' : ''} onClick={() => changeView('incomplete')}>Incompletos</Button>
               <Button variant="ghost" size="sm" className={view === 'duplicates' ? 'active' : ''} onClick={() => changeView('duplicates')}>Duplicados</Button>
             </div>
           }
-          secondary={view === 'operations' ? undefined : (
+          secondary={(view === 'operations' || view === 'comportamento') ? undefined : (
             <Button
               variant="secondary"
               leadingIcon={<Download size={16} aria-hidden />}
@@ -254,8 +257,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
       {view === 'operations' && <OperationsStatusPanel active />}
+      {view === 'comportamento' && <BehaviourReportPanel />}
 
-      {view !== 'operations' && ((view === 'incomplete' || view === 'duplicates') ? (
+      {view !== 'operations' && view !== 'comportamento' && ((view === 'incomplete' || view === 'duplicates') ? (
         <section className="metric-grid compact" aria-label="Resumo de qualidade de dados">
           <MetricCard icon={UsersRound} label="Incompletos" value={dq ? String(dq.incompleteCounts.total) : '...'} trend="com pelo menos uma lacuna" />
           <MetricCard icon={MessageCircle} label="Sem telefone" value={dq ? String(dq.incompleteCounts.noPhone) : '...'} trend="sem contacto WhatsApp" />

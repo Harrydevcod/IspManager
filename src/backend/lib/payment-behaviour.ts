@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { businessDay } from '../../shared/business-day';
 import {
   PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_CODES, SCORE_WINDOW_MONTHS,
-  delayLimitOf, monthsBefore, punctualityScaleOf, scoreClient, trendFor,
+  delayLimitOf, monthKeysEndingAt, monthsBefore, punctualityScaleOf, scoreClient, trendFor,
   type FinancialState, type InvoiceFact, type PaymentClass, type PaymentScore,
   type PaymentTrend, type PunctualityScale, type ScoreRules
 } from '../../shared/payment-score';
@@ -260,6 +260,88 @@ export function punctualityScaleDistributions(db: Database, asOf?: string): Scal
       classified: classified.length,
       distribution: Object.fromEntries(
         PAYMENT_CLASS_LETTERS.map((letter) => [letter, classified.filter((l) => l === letter).length])
+      ) as Record<PaymentClass, number>
+    };
+  });
+}
+
+/** Quantos meses de evolução se mostram, na ficha e nos relatórios. */
+export const HISTORY_MONTHS = 12;
+
+export type BehaviourPoint = {
+  /** `AAAA-MM`. */
+  month: string;
+  score: number;
+  letter: PaymentClass | null;
+  evaluated: number;
+};
+
+/**
+ * O último dia de um mês — ou hoje, se o mês ainda vai a meio.
+ *
+ * A evolução lê-se no fim de cada mês: usar o dia 1 dava a fotografia de antes
+ * de as mensalidades desse mês vencerem, e o gráfico atrasava-se um mês inteiro.
+ */
+function monthEnd(month: string, today: string): string {
+  const [year, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10);
+  return last > today ? today : last;
+}
+
+export type ClientBehaviourDetail = ClientBehaviour & { history: BehaviourPoint[] };
+
+/**
+ * A classificação de um cliente com a sua evolução, para a ficha financeira.
+ *
+ * Doze datas de corte sobre o mesmo array de factos — doze dobras em memória,
+ * não doze consultas. É o que a decisão de derivar (ADR 0026) dá de graça.
+ */
+export function clientBehaviourDetail(
+  db: Database, clientId: number, asOf?: string
+): ClientBehaviourDetail | null {
+  const at = asOf ?? businessDay();
+  const current = behaviourForClient(db, clientId, at);
+  if (!current) return null;
+
+  const rules = currentScoreRules(db);
+  const invoices = loadFacts(db, monthsBefore(at, FACT_WINDOW_MONTHS), clientId).get(clientId) ?? [];
+  const history = monthKeysEndingAt(at, HISTORY_MONTHS).map((month) => {
+    const score = scoreClient(invoices, monthEnd(month, at), rules);
+    return { month, score: score.score, letter: score.letter, evaluated: score.evaluated };
+  });
+
+  return { ...current, history };
+}
+
+export type PortfolioPoint = {
+  month: string;
+  classified: number;
+  avgScore: number;
+  distribution: Record<PaymentClass, number>;
+};
+
+/**
+ * A distribuição da carteira mês a mês, para os relatórios. Mesma dobra, mesmos
+ * factos: uma leitura e doze cortes.
+ */
+export function portfolioHistory(db: Database, asOf?: string): PortfolioPoint[] {
+  const at = asOf ?? businessDay();
+  const rules = currentScoreRules(db);
+  const facts = loadFacts(db, monthsBefore(at, FACT_WINDOW_MONTHS));
+  const carteira = loadClients(db).map((row) => facts.get(row.clientId) ?? []);
+
+  return monthKeysEndingAt(at, HISTORY_MONTHS).map((month) => {
+    const when = monthEnd(month, at);
+    const letters = carteira.map((invoices) => scoreClient(invoices, when, rules));
+    const classified = letters.filter((s) => s.letter !== null);
+    return {
+      month,
+      classified: classified.length,
+      avgScore: classified.length
+        ? Math.round(classified.reduce((sum, s) => sum + s.score, 0) / classified.length)
+        : 0,
+      distribution: Object.fromEntries(
+        PAYMENT_CLASS_LETTERS.map((letter) => [letter, classified.filter((s) => s.letter === letter).length])
       ) as Record<PaymentClass, number>
     };
   });

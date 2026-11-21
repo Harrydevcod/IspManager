@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SaleTicketDialog } from './SaleTicketDialog';
 import { SaleTicketDetailDialog } from './SaleTicketDetailDialog';
-import { PaymentsList } from './PaymentsList';
+import { PAYMENT_COLUMNS, PaymentsList } from './PaymentsList';
 import { downloadAuthenticated, printAuthenticated } from '../../lib/download';
 import type { PaymentRow } from '../../types';
 
@@ -182,7 +182,7 @@ test('cancelled tickets remain readable and PDF actions remain available', async
 
 test('sale-ticket rows expose their own detail action without generic invoice or receipt actions', async () => {
   const preview = vi.fn(); const noop = () => {};
-  await mount(<PaymentsList payments={[ticketPayment]} activeId={null} sort={{ key: 'Fatura', direction: 'asc' }} onSortChange={noop} submitting={false} isReminderSentToday={() => false} onPreview={preview} onOpenPdf={noop} onMarkOverdue={noop} onOpenPayForm={noop} onOpenWhatsappForm={noop} onSendDocumentWhatsapp={noop} onSendSms={noop} onOpenCancelForm={noop} onRevert={noop} onRegenerate={noop} />);
+  await mount(<PaymentsList payments={[ticketPayment]} activeId={null} sort={{ key: 'Fatura', direction: 'asc' }} onSortChange={noop} submitting={false} isReminderSentToday={() => false} onPreview={preview} onOpenPdf={noop} onMarkOverdue={noop} onOpenPayForm={noop} onOpenWhatsappForm={noop} onSendDocumentWhatsapp={noop} onSendSms={noop} onOpenCancelForm={noop} onRevert={noop} onRegenerate={noop} columns={PAYMENT_COLUMNS} />);
   await click(document.querySelector<HTMLButtonElement>('.row-actions-trigger') || document.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!);
   expect(document.body.textContent).toContain('Abrir talão de venda'); expect(document.body.textContent).not.toContain('Fatura PDF'); expect(document.body.textContent).not.toContain('Recibo PDF');
 });

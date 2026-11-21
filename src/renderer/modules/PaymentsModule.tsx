@@ -13,6 +13,8 @@ import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
 import { useColumnVisibility } from '../lib/columnVisibility';
+import { useBehaviourIndex } from '../lib/behaviourIndex';
+import { behaviourColumns } from './finance/behaviourColumns';
 import { effectivePaymentStatus } from '../lib/status';
 import { defaultPostpaidReferenceMonth, isManualInvoiceReference } from '../../shared/billing-period';
 import {
@@ -142,6 +144,11 @@ export function PaymentsModule({
   const selection = useRowSelection<number>();
   const { toast } = useToast();
   const columnVisibility = useColumnVisibility('ispm.finance.payments.hiddenColumns', PAYMENT_HEADERS, PAYMENT_DEFAULT_HIDDEN);
+  const behaviour = useBehaviourIndex();
+  const paymentColumns = useMemo(
+    () => [...PAYMENT_COLUMNS, ...behaviourColumns<PaymentRow>((p) => p.clientId, behaviour)],
+    [behaviour]
+  );
   const confirm = useConfirm();
 
   // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses)
@@ -958,8 +965,8 @@ export function PaymentsModule({
     [periodPayments, statusFilter]
   );
   const visiblePayments = useMemo(
-    () => sortByColumns(filteredPayments, sortState, PAYMENT_COLUMNS, DEFAULT_PAYMENT_SORT.key),
-    [filteredPayments, sortState]
+    () => sortByColumns(filteredPayments, sortState, paymentColumns, DEFAULT_PAYMENT_SORT.key),
+    [filteredPayments, sortState, paymentColumns]
   );
   const pagedPayments = useMemo(
     () => paginateRows(visiblePayments, { page: paymentPage, pageSize: paymentPageSize }),
@@ -1236,6 +1243,7 @@ export function PaymentsModule({
           </BulkActionBar>
 
           <PaymentsList
+            columns={paymentColumns}
             payments={pagedPayments.rows}
             activeId={previewPayment?.id ?? null}
             selection={tableSelection}
