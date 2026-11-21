@@ -173,6 +173,18 @@ describe('o pedido de assistência resolvido no terreno', () => {
     expect(d.ack).toHaveBeenCalled();
   });
 
+  test('um pedido já fechado no PC não volta atrás com um evento antigo do telemóvel', async () => {
+    // O telemóvel pode guardar o evento dias, fora da rede; entretanto o pedido
+    // foi tratado no PC. Recusa-se, e o telemóvel fica livre dele.
+    const id = ticket(client('Rui', null), 'fechado');
+    const d = deps([resolved('evt-00000013', id)]);
+    await mod.pullCompanionEventsIfDue(d);
+    expect(db.prepare('SELECT status, reason FROM companion_events WHERE id = ?').get('evt-00000013'))
+      .toEqual({ status: 'rejected', reason: 'Pedido já não estava aberto' });
+    expect(db.prepare('SELECT status FROM support_tickets WHERE id = ?').get(id)).toEqual({ status: 'fechado' });
+    expect(d.ack).toHaveBeenCalled();
+  });
+
   test('sem dizer o que se fez não se resolve nada', async () => {
     const id = ticket(client('Marta', null));
     await mod.pullCompanionEventsIfDue(deps([resolved('evt-00000012', id, '   ')]));

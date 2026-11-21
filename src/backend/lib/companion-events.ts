@@ -175,6 +175,16 @@ function apply(db: Database.Database, event: CompanionEvent, photos: Buffer[]): 
   if (event.kind === 'ticket_done') {
     const p = ticketDone.safeParse(event.payload);
     if (!p.success) return { status: 'rejected', reason: 'dados do pedido invalidos' };
+    // Um evento pode ficar dias na fila do telemóvel (fora da rede) e chegar
+    // depois de alguém já ter tratado o pedido no PC. Só se resolve o que ainda
+    // está por resolver — como a OS, que também recusa estar já concluída.
+    const open = db.prepare(`
+      SELECT 1 FROM support_tickets WHERE id = ? AND status IN ('aberto', 'em_curso', 'aguarda_cliente')
+    `).get(p.data.ticketId);
+    if (!open) {
+      const exists = db.prepare('SELECT 1 FROM support_tickets WHERE id = ?').get(p.data.ticketId);
+      return { status: 'rejected', reason: exists ? 'Pedido já não estava aberto' : 'Pedido não encontrado' };
+    }
     // `updateTicket` já exige a nota para resolver, grava a mudança de estado no
     // histórico do pedido e acerta o `resolved_at`. Sem utilizador: o autor é o
     // terreno, e o texto da nota di-lo.
