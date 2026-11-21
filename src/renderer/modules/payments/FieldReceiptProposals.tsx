@@ -3,6 +3,7 @@ import { Check, Smartphone, X } from 'lucide-react';
 import { Button, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
+import { AccountSelect } from '../treasury/AccountSelect';
 
 export type ReceiptProposal = {
   id: string;
@@ -13,6 +14,8 @@ export type ReceiptProposal = {
   amountCve: number;
   method: 'numerario' | 'transferencia';
   note: string | null;
+  /** A conta indicada no terreno, quando a app o permite (0.14+). */
+  accountId: number | null;
   target: { paymentId: number; dueDate: string; balanceCve: number } | null;
 };
 
@@ -23,17 +26,30 @@ const when = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit'
 /**
  * Recebimentos em mão registados na app móvel. Nenhum entra na caixa sozinho:
  * só "Confirmar" o transforma em recibo (na fatura em aberto mais antiga, com a
- * data do terreno). Sem propostas, o painel não ocupa espaço.
+ * data do terreno), na caixa ou no banco escolhido aqui. Sem propostas, o painel
+ * não ocupa espaço.
  */
 export function FieldReceiptProposals({ onConfirmed }: { onConfirmed: () => void }) {
   const [proposals, setProposals] = useState<ReceiptProposal[]>([]);
+  const [accountFor, setAccountFor] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
     authFetch(ENDPOINT)
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: ReceiptProposal[]) => setProposals(rows))
+      .then((rows: ReceiptProposal[]) => {
+        setProposals(rows);
+        // A conta que veio do terreno aparece escolhida; o resto deixa o
+        // AccountSelect propor (a caixa predefinida, no numerário).
+        setAccountFor((current) => {
+          const next = { ...current };
+          for (const row of rows) {
+            if (next[row.id] === undefined && row.accountId != null) next[row.id] = String(row.accountId);
+          }
+          return next;
+        });
+      })
       .catch(() => undefined);
   }, []);
 
@@ -48,10 +64,11 @@ export function FieldReceiptProposals({ onConfirmed }: { onConfirmed: () => void
     setBusyId(id);
     setError('');
     try {
+      const account = accountFor[id];
       const response = await authFetch(`${ENDPOINT}/${encodeURIComponent(id)}/${action}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}'
+        body: JSON.stringify(action === 'confirm' && account ? { accountId: Number(account) } : {})
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { error?: string };
@@ -87,11 +104,22 @@ export function FieldReceiptProposals({ onConfirmed }: { onConfirmed: () => void
               <strong>{formatCve(p.amountCve)}</strong>
               <span>{p.target ? `paga a fatura de ${p.target.dueDate.slice(0, 10)} (${formatCve(p.target.balanceCve)})` : 'sem faturas em aberto'}</span>
             </div>
+            <AccountSelect
+              purpose={p.method}
+              value={accountFor[p.id] ?? ''}
+              onChange={(value) => setAccountFor((current) => ({ ...current, [p.id]: value }))}
+              disabled={busyId !== null}
+              className="field-receipt-account"
+            />
             <div className="field-receipt-actions">
               <Button variant="critical" leadingIcon={<X size={14} aria-hidden />} disabled={busyId !== null} onClick={() => void decide(p.id, 'reject')}>
                 Rejeitar
               </Button>
-              <Button leadingIcon={<Check size={14} aria-hidden />} disabled={busyId !== null || !p.target} onClick={() => void decide(p.id, 'confirm')}>
+              <Button
+                leadingIcon={<Check size={14} aria-hidden />}
+                disabled={busyId !== null || !p.target || !accountFor[p.id]}
+                onClick={() => void decide(p.id, 'confirm')}
+              >
                 {busyId === p.id ? 'A registar...' : 'Confirmar'}
               </Button>
             </div>

@@ -26,6 +26,8 @@ beforeEach(() => {
   for (const table of ['sms_inbox', 'work_order_attachments', 'companion_events', 'service_events', 'work_orders', 'support_ticket_entries', 'support_tickets', 'client_credits', 'treasury_movements', 'payment_receipts', 'payment_lines', 'payments', 'services', 'clients', 'app_settings']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
+  // Os bancos são dos testes; a caixa predefinida vem das migrações e fica.
+  db.prepare(`DELETE FROM treasury_accounts WHERE kind = 'banco'`).run();
   db.prepare(`INSERT INTO app_settings (key, value) VALUES ('smsCompanionEnabled', 'true'), ('smsCompanionBaseUrl', 'http://192.168.1.50:8765')`).run();
   writeSecret(db, 'smsCompanionPairingKey', 'secret');
 });
@@ -241,6 +243,49 @@ describe('receipt proposals', () => {
   test('an unknown client code is rejected on arrival', async () => {
     await mod.pullCompanionEventsIfDue(deps([proposal('evt-00000014', 'CL-NAO-EXISTE', 2500)]));
     expect(db.prepare('SELECT status FROM companion_events WHERE id = ?').get('evt-00000014')).toEqual({ status: 'rejected' });
+  });
+
+  const bank = (name = 'BCA') =>
+    db.prepare(`
+      INSERT INTO treasury_accounts (kind, name, opening_date, active) VALUES ('banco', ?, '2026-01-01', 1)
+    `).run(name).lastInsertRowid as number;
+
+  const transfer = (id: string, clientCode: string, accountId?: number): CompanionEvent => ({
+    id, kind: 'receipt_proposal', at: '2026-11-05T09:15:00.000Z',
+    payload: { clientCode, amountCve: 2500, method: 'transferencia', ...(accountId ? { accountId } : {}) }
+  });
+
+  test('a conta indicada no terreno chega ao PC e vale quando ninguém escolhe outra', async () => {
+    const ana = client('Ana', null);
+    const payment = invoice(ana, 2500, '2026-10-10');
+    const bca = bank();
+    await mod.pullCompanionEventsIfDue(deps([transfer('evt-00000015', ana.code, bca)]));
+
+    expect(mod.listReceiptProposals(db)[0]).toMatchObject({ method: 'transferencia', accountId: bca });
+    expect(mod.confirmReceiptProposal(db, 'evt-00000015', { id: null, username: 'admin' })).toEqual({ ok: true });
+    expect(db.prepare('SELECT payment_id AS p, account_id AS a FROM payment_receipts').get()).toEqual({ p: payment, a: bca });
+  });
+
+  test('o operador manda: a conta que ele escolhe ganha à do terreno', async () => {
+    const ana = client('Ana', null);
+    invoice(ana, 2500, '2026-10-10');
+    const terreno = bank('BCA');
+    const escolhido = bank('Caixa Económica');
+    await mod.pullCompanionEventsIfDue(deps([transfer('evt-00000016', ana.code, terreno)]));
+
+    expect(mod.confirmReceiptProposal(db, 'evt-00000016', { id: null, username: 'admin' }, escolhido)).toEqual({ ok: true });
+    expect(db.prepare('SELECT account_id AS a FROM payment_receipts').get()).toEqual({ a: escolhido });
+  });
+
+  test('uma transferência sem banco não se confirma — diz-se porquê em vez de rebentar', async () => {
+    const ana = client('Ana', null);
+    invoice(ana, 2500, '2026-10-10');
+    await mod.pullCompanionEventsIfDue(deps([transfer('evt-00000017', ana.code)]));
+
+    const result = mod.confirmReceiptProposal(db, 'evt-00000017', { id: null, username: 'admin' });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    // Fica pendente, para ser confirmada com o banco escolhido no ecrã.
+    expect(mod.listReceiptProposals(db)).toHaveLength(1);
   });
 });
 

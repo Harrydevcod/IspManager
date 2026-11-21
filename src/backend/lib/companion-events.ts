@@ -64,7 +64,9 @@ const receiptProposal = z.object({
   clientCode: z.string().trim().min(1).max(40),
   amountCve: z.number().positive().max(10_000_000),
   method: z.enum(['numerario', 'transferencia']),
-  note: z.string().trim().max(500).optional()
+  note: z.string().trim().max(500).optional(),
+  /** A caixa ou o banco que o terreno indicou; o operador pode trocá-la ao confirmar. */
+  accountId: z.number().int().positive().optional()
 });
 
 const smsIn = z.object({
@@ -307,6 +309,8 @@ export type ReceiptProposal = {
   amountCve: number;
   method: 'numerario' | 'transferencia';
   note: string | null;
+  /** A conta indicada no terreno, se foi; o PC mostra-a escolhida e pode trocá-la. */
+  accountId: number | null;
   /** A fatura que o recibo vai pagar (a em aberto mais antiga); null = sem nada a pagar. */
   target: { paymentId: number; dueDate: string; balanceCve: number } | null;
 };
@@ -335,7 +339,8 @@ export function listReceiptProposals(db: Database.Database = getSqliteDatabase()
     if (!p.success) return [];
     return [{
       id: r.id, occurredAt: r.occurredAt, clientId: r.clientId, clientCode: p.data.clientCode, clientName: r.clientName,
-      amountCve: p.data.amountCve, method: p.data.method, note: p.data.note ?? null, target: oldestOpenInvoice(db, r.clientId)
+      amountCve: p.data.amountCve, method: p.data.method, note: p.data.note ?? null,
+      accountId: p.data.accountId ?? null, target: oldestOpenInvoice(db, r.clientId)
     }];
   });
 }
@@ -359,12 +364,15 @@ export function confirmReceiptProposal(
       paymentMethod: proposal.method,
       paymentDate: proposal.occurredAt.slice(0, 10),
       amountCve: proposal.amountCve,
-      accountId: accountId ?? null,
+      // O operador decide; sem escolha dele vale a conta indicada no terreno.
+      accountId: accountId ?? proposal.accountId,
       notes: ['Recebido no terreno (app móvel)', proposal.note].filter(Boolean).join(' — '),
       userId: user.id
     });
     if (!paid.ok) return { ok: false, status: paid.status, error: paid.error };
     db.prepare(`UPDATE companion_events SET status = 'applied', decided_by = ?, decided_at = datetime('now') WHERE id = ?`).run(user.username, id);
+    // O cliente sai já da lista de devedores do telemóvel.
+    requestCompanionSnapshotPush();
     return { ok: true };
   })();
 }

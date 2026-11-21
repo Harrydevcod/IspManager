@@ -47,6 +47,11 @@ export type CompanionSnapshot = {
     cashToday: { totalCve: number; byAccount: Array<{ name: string; amountCve: number }> };
     /** Recebido por mês, do mais antigo ao atual (6 meses). */
     monthlyReceipts: Array<{ month: string; amountCve: number }>;
+    /**
+     * Caixas e bancos ativos, para o terreno dizer onde o dinheiro entrou.
+     * Ausente numa app anterior à 0.14: a conta fica por escolher no PC.
+     */
+    accounts: Array<{ id: number; kind: 'caixa' | 'banco'; name: string; isDefaultCash: boolean }>;
   };
   network: {
     tone: 'ok' | 'warn' | 'danger';
@@ -202,6 +207,16 @@ function loadCashToday(db: Database.Database): CompanionSnapshot['money']['cashT
   };
 }
 
+/** Onde o dinheiro do terreno pode entrar: caixas e bancos ativos, pela ordem da Tesouraria. */
+function loadAccounts(db: Database.Database): CompanionSnapshot['money']['accounts'] {
+  return (db.prepare(`
+    SELECT id, kind, name, is_default_cash AS isDefaultCash
+    FROM treasury_accounts WHERE active = 1
+    ORDER BY sort_order, name
+  `).all() as Array<{ id: number; kind: 'caixa' | 'banco'; name: string; isDefaultCash: number }>)
+    .map((a) => ({ id: a.id, kind: a.kind, name: a.name, isDefaultCash: a.isDefaultCash === 1 }));
+}
+
 function loadMonthlyReceipts(db: Database.Database): CompanionSnapshot['money']['monthlyReceipts'] {
   const months = [5, 4, 3, 2, 1, 0].map((back) =>
     (db.prepare(`SELECT strftime('%Y-%m', ${sqlBusinessDate("'start of month'", '?')}) AS m`).get(`-${back} months`) as { m: string }).m);
@@ -277,7 +292,8 @@ export async function buildCompanionSnapshot(
         .map(({ clientName, amountCve, daysOverdue }) => ({ clientName, amountCve: Number(amountCve) || 0, daysOverdue })),
       debtors: loadDebtors(db),
       cashToday: loadCashToday(db),
-      monthlyReceipts: loadMonthlyReceipts(db)
+      monthlyReceipts: loadMonthlyReceipts(db),
+      accounts: loadAccounts(db)
     },
     network: {
       tone: health.tone,

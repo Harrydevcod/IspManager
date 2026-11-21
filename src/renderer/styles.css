@@ -1545,7 +1545,7 @@ h2 {
 
 .field-receipt {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 16px;
   padding: 10px 12px;
@@ -1584,6 +1584,11 @@ h2 {
 .field-receipt-actions {
   display: flex;
   gap: 8px;
+}
+
+/* O seletor da conta não leva a linha toda: ao lado do valor chegam 12rem. */
+.field-receipt-account {
+  width: min(12rem, 100%);
 }
 
 @media (max-width: 720px) {

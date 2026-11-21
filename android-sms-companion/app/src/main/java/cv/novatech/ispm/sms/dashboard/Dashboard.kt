@@ -56,8 +56,13 @@ data class Dashboard(
     val criticalOverdue: List<Debtor>,
     val debtors: List<Debtor> = emptyList(),
     val cashToday: CashToday = CashToday(0, emptyList()),
-    val monthlyReceipts: List<MonthAmount> = emptyList()
+    val monthlyReceipts: List<MonthAmount> = emptyList(),
+    /** Caixas e bancos ativos; vazio num desktop anterior à 2.75, e então a conta escolhe-se lá. */
+    val accounts: List<Account> = emptyList()
   )
+
+  /** Onde o dinheiro recebido no terreno entra. `caixa` para numerário, `banco` para transferência. */
+  data class Account(val id: Long, val kind: String, val name: String, val isDefaultCash: Boolean)
   data class Down(val name: String, val since: String, val kind: String = "", val id: Long = 0) {
     /** Identity across snapshots; an older desktop sends no id, so the name stands in. */
     val key: String get() = if (id > 0) "$kind:$id" else "name:$name"
@@ -122,7 +127,10 @@ data class Dashboard(
           cashToday = (money.optJSONObject("cashToday") ?: JSONObject()).let { c ->
             CashToday(c.optLong("totalCve"), c.optJSONArray("byAccount").items { AccountAmount(it.optString("name"), it.optLong("amountCve")) })
           },
-          monthlyReceipts = money.optJSONArray("monthlyReceipts").items { MonthAmount(it.optString("month"), it.optLong("amountCve")) }
+          monthlyReceipts = money.optJSONArray("monthlyReceipts").items { MonthAmount(it.optString("month"), it.optLong("amountCve")) },
+          accounts = money.optJSONArray("accounts").items {
+            Account(it.optLong("id"), it.optString("kind"), it.optString("name"), it.optBoolean("isDefaultCash"))
+          }
         ),
         network = Network(
           tone = net.optString("tone", "ok"),
@@ -215,6 +223,22 @@ object DashboardRules {
 data class NetworkChanges(val wentDown: List<Dashboard.Down>, val restored: List<Restored>) {
   data class Restored(val down: Dashboard.Down, val minutesDown: Long?)
   val count: Int get() = wentDown.size + restored.size
+}
+
+/**
+ * Onde o dinheiro recebido no terreno entra. As mesmas regras do PC: numerário
+ * só em caixas, transferência só em bancos. Sem contas no resumo (desktop
+ * anterior), não se escolhe nada aqui e a conta fica para o PC.
+ */
+object ReceiptRules {
+  fun accountsFor(method: String, accounts: List<Dashboard.Account>): List<Dashboard.Account> =
+    accounts.filter { it.kind == if (method == "transferencia") "banco" else "caixa" }
+
+  /** A caixa predefinida, ou a única conta possível; com mais do que uma, escolhe quem recebeu. */
+  fun preferred(method: String, accounts: List<Dashboard.Account>): Dashboard.Account? {
+    val options = accountsFor(method, accounts)
+    return options.firstOrNull { method == "numerario" && it.isDefaultCash } ?: options.singleOrNull()
+  }
 }
 
 object FieldRules {

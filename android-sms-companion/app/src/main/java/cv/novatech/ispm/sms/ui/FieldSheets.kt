@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.dashboard.DashboardRules
+import cv.novatech.ispm.sms.dashboard.ReceiptRules
 import cv.novatech.ispm.sms.events.FieldPhotos
 import cv.novatech.ispm.sms.ui.components.ButtonVariant
 import cv.novatech.ispm.sms.ui.components.IspmButton
@@ -151,13 +152,21 @@ fun ResolveTicketSheet(
 @Composable
 fun ReceiptSheet(
   debtor: Dashboard.Debtor,
+  accounts: List<Dashboard.Account>,
   onDismiss: () -> Unit,
-  onSubmit: (amountCve: Long, method: String, note: String) -> Unit
+  onSubmit: (amountCve: Long, method: String, note: String, accountId: Long?) -> Unit
 ) {
   var amount by remember { mutableStateOf(debtor.amountCve.toString()) }
   var method by remember { mutableStateOf("numerario") }
   var note by remember { mutableStateOf("") }
+  var accountId by remember { mutableStateOf<Long?>(null) }
   val value = amount.filter { it.isDigit() }.toLongOrNull() ?: 0L
+  val options = ReceiptRules.accountsFor(method, accounts)
+
+  // Trocar o método troca o tipo de conta: o que já não cabe dá lugar à proposta.
+  LaunchedEffect(method, accounts) {
+    if (options.none { it.id == accountId }) accountId = ReceiptRules.preferred(method, accounts)?.id
+  }
 
   ModalBottomSheet(onDismissRequest = onDismiss) {
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -170,13 +179,27 @@ fun ReceiptSheet(
         modifier = Modifier.fillMaxWidth()
       )
       SegmentedControl(listOf("numerario", "transferencia"), method, { if (it == "numerario") "Numerário" else "Transferência" }, { method = it })
+      if (options.isNotEmpty()) {
+        Text(if (method == "transferencia") "Banco" else "Caixa", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        if (options.size <= 3) {
+          SegmentedControl(options, options.firstOrNull { it.id == accountId } ?: options.first(), { it.name }, { accountId = it.id })
+        } else {
+          // Com muitas contas o controlo segmentado corta os nomes: uma por linha.
+          options.forEach { account ->
+            IspmButton(
+              account.name, onClick = { accountId = account.id }, modifier = Modifier.fillMaxWidth(),
+              variant = if (account.id == accountId) ButtonVariant.PRIMARY else ButtonVariant.SECONDARY
+            )
+          }
+        }
+      }
       OutlinedTextField(
         value = note, onValueChange = { note = it.take(500) },
         label = { Text("Nota (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
       )
       Text("Fica à espera de confirmação no PC: só aí entra na caixa.", color = TextMuted, style = MaterialTheme.typography.bodySmall)
       IspmButton(
-        "Enviar ${DashboardRules.formatCve(value)} ao PC", onClick = { onSubmit(value, method, note.trim()) },
+        "Enviar ${DashboardRules.formatCve(value)} ao PC", onClick = { onSubmit(value, method, note.trim(), accountId) },
         modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.PRIMARY, enabled = value > 0
       )
     }

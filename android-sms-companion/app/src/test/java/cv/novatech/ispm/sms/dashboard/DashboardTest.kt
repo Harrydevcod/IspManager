@@ -89,7 +89,9 @@ class DashboardTest {
         "\"debtors\":[{\"clientName\":\"Ana Lopes\",\"clientCode\":\"C1\",\"phone\":\"+2389912233\",\"amountCve\":5000,\"daysOverdue\":41}," +
         "{\"clientName\":\"Rui\",\"clientCode\":\"C2\",\"phone\":null,\"amountCve\":2500,\"daysOverdue\":3}]," +
         "\"cashToday\":{\"totalCve\":3500,\"byAccount\":[{\"name\":\"Caixa loja\",\"amountCve\":3500}]}," +
-        "\"monthlyReceipts\":[{\"month\":\"2026-10\",\"amountCve\":63000},{\"month\":\"2026-11\",\"amountCve\":9500}]}"
+        "\"monthlyReceipts\":[{\"month\":\"2026-10\",\"amountCve\":63000},{\"month\":\"2026-11\",\"amountCve\":9500}]," +
+        "\"accounts\":[{\"id\":1,\"kind\":\"caixa\",\"name\":\"Caixa loja\",\"isDefaultCash\":true}," +
+        "{\"id\":3,\"kind\":\"banco\",\"name\":\"BCA\",\"isDefaultCash\":false}]}"
     )
     .replace(
       "\"downNow\":[{\"name\":\"Antena X\",\"since\":\"2026-11-03T11:00:00Z\"}]",
@@ -110,6 +112,8 @@ class DashboardTest {
     assertEquals(3500L, d.money.cashToday.totalCve)
     assertEquals("Caixa loja", d.money.cashToday.byAccount.single().name)
     assertEquals(listOf("2026-10", "2026-11"), d.money.monthlyReceipts.map { it.month })
+    assertEquals(Dashboard.Account(1, "caixa", "Caixa loja", isDefaultCash = true), d.money.accounts.first())
+    assertEquals("BCA", ReceiptRules.preferred("transferencia", d.money.accounts)?.name)
     assertEquals("assignment:7", d.network.downNow.single().key)
     assertEquals("Monte Sossego", d.work.orders.single().zone)
     assertNull(d.work.tickets.single().phone)

@@ -124,6 +124,19 @@ describe('buildCompanionSnapshot — terreno', () => {
     expect(money.cashToday.byAccount).toEqual([{ name: 'Caixa loja', amountCve: 1000 }, { name: 'Sem conta', amountCve: 500 }]);
   });
 
+  test('contas: as ativas, pela ordem da Tesouraria, com a caixa predefinida marcada', async () => {
+    db.prepare(`
+      INSERT INTO treasury_accounts (kind, name, opening_date, is_default_cash, sort_order, active) VALUES
+        ('banco', 'BCA', date('now'), 0, 2, 1),
+        ('caixa', 'Caixa loja', date('now'), 1, 1, 1),
+        ('caixa', 'Caixa antiga', date('now'), 0, 3, 0)
+    `).run();
+    const { money } = await snapshot();
+    expect(money.accounts.map((a) => a.name)).toEqual(['Caixa loja', 'BCA']);
+    expect(money.accounts[0]).toMatchObject({ kind: 'caixa', isDefaultCash: true });
+    expect(money.accounts[1]).toMatchObject({ kind: 'banco', isDefaultCash: false });
+  });
+
   test('monthly receipts: always six months, oldest first, empty months at zero', async () => {
     const id = invoice(client('Ana', '9912233'), 9000, 1);
     receipt(id, 1200, today(), null);
