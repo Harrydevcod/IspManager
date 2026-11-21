@@ -13,7 +13,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './lib/sidebar';
 import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
 import { useUpcomingSuspensionsNotice } from './modules/finance/UpcomingSuspensionsCard';
-import { FinanceModule } from './modules/FinanceModule';
+import { FinanceModule, type FinanceTab } from './modules/FinanceModule';
 import { TreasuryModule } from './modules/treasury/TreasuryModule';
 import { PlansModule } from './modules/PlansModule';
 import { ServicesModule } from './modules/ServicesModule';
@@ -137,6 +137,10 @@ function AppShell() {
    */
   const [focusAssignmentId, setFocusAssignmentId] = useState<number | null>(null);
   const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
+  // Separador do Financeiro pedido por um alerta, e o contador que o remonta
+  // quando o mesmo alerta é clicado outra vez. Mesmo molde das Configurações.
+  const [financeTab, setFinanceTab] = useState<FinanceTab | null>(null);
+  const [financeRequest, setFinanceRequest] = useState(0);
   const [paymentFocusId, setPaymentFocusId] = useState<number | null>(null);
   const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [stockLowFocus, setStockLowFocus] = useState(false);
@@ -253,6 +257,10 @@ function AppShell() {
   /** O alerta leva ao sítio que o trata: a secção, e o separador ou filtro lá dentro. */
   const openNotificationTarget = useCallback((target: string, focus: string | null) => {
     if (target === 'finance' && (focus === 'overdue' || focus === 'pending')) setPaymentsFocus(focus);
+    if (target === 'finance' && focus === 'behaviour') {
+      setFinanceTab('comportamento');
+      setFinanceRequest((request) => request + 1);
+    }
     if (target === 'topology' && focus === 'incidents') setTopologyTab('incidents');
     if (target === 'stock') setStockLowFocus(focus === 'low');
     if (target === 'settings' && focus) {
@@ -577,6 +585,8 @@ function AppShell() {
           {section === 'router' && <RouterModule />}
           {section === 'finance' && (
             <FinanceModule
+              key={financeRequest}
+              initialTab={financeTab ?? undefined}
               paymentFocusId={paymentFocusId}
               onPaymentFocusHandled={() => setPaymentFocusId(null)}
               paymentsFocus={paymentsFocus}

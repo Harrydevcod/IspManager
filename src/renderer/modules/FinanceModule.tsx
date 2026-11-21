@@ -10,7 +10,7 @@ import { ClientFinanceDialog } from './finance/ClientFinanceDialog';
 import { PaymentBehaviourTab } from './finance/PaymentBehaviourTab';
 import './FinanceModule.css';
 
-type FinanceTab = 'pagamentos' | 'pendentes' | 'comportamento' | 'lucro' | 'investimentos' | 'despesas';
+export type FinanceTab = 'pagamentos' | 'pendentes' | 'comportamento' | 'lucro' | 'investimentos' | 'despesas';
 
 const TABS = [
   { id: 'pagamentos', label: 'Pagamentos', icon: Banknote },
@@ -29,19 +29,22 @@ const TABS = [
  * through `paymentsFocus`, consumed by PaymentsModule on mount.
  */
 export function FinanceModule({
+  initialTab,
   paymentFocusId, onPaymentFocusHandled,
   paymentsFocus,
   paymentsMonth,
   onPaymentsFocusHandled,
   onOpenClient
 }: {
+  /** Separador de arranque; o sino usa-o para levar ao sítio que trata o alerta. */
+  initialTab?: FinanceTab;
   paymentFocusId?: number | null; onPaymentFocusHandled?: () => void;
   paymentsFocus?: 'overdue' | 'pending' | null;
   paymentsMonth?: string | null;
   onPaymentsFocusHandled?: () => void;
   onOpenClient?: (clientId: number) => void;
 } = {}) {
-  const [tab, setTab] = useState<FinanceTab>('pagamentos');
+  const [tab, setTab] = useState<FinanceTab>(initialTab ?? 'pagamentos');
   const [financeClientId, setFinanceClientId] = useState<number | null>(null);
   // Fatura aberta a partir da ficha financeira; o foco vindo de fora (App) continua a valer.
   const [localPaymentFocus, setLocalPaymentFocus] = useState<number | null>(null);
