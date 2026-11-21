@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Select } from '../../components';
+import { Field, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
 import {
-  PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALES, PUNCTUALITY_SCALE_CODES, PUNCTUALITY_SCALE_LABELS,
-  type PaymentClass, type PunctualityScale
+  DELAY_LIMIT_RANGE, PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALES, PUNCTUALITY_SCALE_CODES,
+  PUNCTUALITY_SCALE_LABELS, type PaymentClass, type PunctualityScale
 } from '../../../shared/payment-score';
 
 /**
@@ -29,8 +29,13 @@ export function ladderOf(scale: PunctualityScale): string {
 }
 
 export function PunctualityScaleField({
-  value, onChange
-}: { value: PunctualityScale; onChange: (scale: PunctualityScale) => void }) {
+  value, onChange, delayLimitDays, onChangeDelayLimit
+}: {
+  value: PunctualityScale;
+  onChange: (scale: PunctualityScale) => void;
+  delayLimitDays: string;
+  onChangeDelayLimit: (days: string) => void;
+}) {
   const [scales, setScales] = useState<ScaleDistribution[] | null>(null);
 
   useEffect(() => {
@@ -52,19 +57,29 @@ export function PunctualityScaleField({
 
   return (
     <div className="scale-field wide-field">
-      <Select
-        label="Escala da pontualidade"
-        wide
-        hint="Muda as letras de todos os clientes, histórico incluído."
-        value={value}
-        onChange={(event) => onChange(event.target.value as PunctualityScale)}
-      >
-        {PUNCTUALITY_SCALE_CODES.map((scale) => (
-          <option key={scale} value={scale}>
-            {PUNCTUALITY_SCALE_LABELS[scale]} — {ladderOf(scale)}
-          </option>
-        ))}
-      </Select>
+      <div className="scale-field-rules">
+        <Select
+          label="Escala da pontualidade"
+          value={value}
+          onChange={(event) => onChange(event.target.value as PunctualityScale)}
+        >
+          {PUNCTUALITY_SCALE_CODES.map((scale) => (
+            <option key={scale} value={scale}>
+              {PUNCTUALITY_SCALE_LABELS[scale]} — {ladderOf(scale)}
+            </option>
+          ))}
+        </Select>
+        <Field
+          label="Atraso médio que vale zero (dias)"
+          type="number"
+          min={DELAY_LIMIT_RANGE.min}
+          max={DELAY_LIMIT_RANGE.max}
+          value={delayLimitDays}
+          onChange={(event) => onChangeDelayLimit(event.target.value)}
+        />
+      </div>
+      {/* A dica é das duas regras: mexer em qualquer uma reescreve as letras. */}
+      <span className="field-hint">Mudam as letras de todos os clientes, histórico incluído.</span>
 
       <table className="scale-compare">
         <caption>{classified > 0 ? `A sua carteira, ${classified} classificados` : 'O que cada escala perdoa'}</caption>

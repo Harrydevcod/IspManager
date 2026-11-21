@@ -200,6 +200,7 @@ describe('settings routes', () => {
         ivaRate: 15,
         fiscalRegime: 'normal',
         punctualityScale: 'exigente',
+        punctualityDelayLimitDays: 15,
         showIva: false,
         printQrCode: false,
         whatsappTemplate: 'Ola {nome}, a sua mensalidade esta disponivel.',
@@ -1466,7 +1467,7 @@ describe('finance routes', () => {
       invoicePrefix: 'FAT',
       receiptPrefix: 'RC',
       ivaRate: 15,
-      fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const,
+      fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const, punctualityDelayLimitDays: 15,
       showIva: false,
       printQrCode: false
     };
@@ -1625,7 +1626,7 @@ describe('finance routes', () => {
     const base = {
       companyName: 'X', defaultDueDay: 1, currencyCode: 'CVE',
       invoicePrefix: 'FT', receiptPrefix: 'RC',
-      ivaRate: 15, fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const,
+      ivaRate: 15, fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const, punctualityDelayLimitDays: 15,
       showIva: false, printQrCode: false,
     };
     const res = await app.inject({
@@ -1640,7 +1641,7 @@ describe('finance routes', () => {
     const base = {
       companyName: 'X', defaultDueDay: 1, currencyCode: 'CVE',
       invoicePrefix: 'FT', receiptPrefix: 'RC',
-      ivaRate: 15, fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const,
+      ivaRate: 15, fiscalRegime: 'normal' as const, punctualityScale: 'exigente' as const, punctualityDelayLimitDays: 15,
       showIva: false, printQrCode: false,
     };
     const res = await app.inject({

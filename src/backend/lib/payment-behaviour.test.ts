@@ -1,18 +1,21 @@
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { businessDay } from '../../shared/business-day';
-import { DEFAULT_PUNCTUALITY_SCALE, monthsBefore } from '../../shared/payment-score';
+import {
+  DEFAULT_DELAY_LIMIT_DAYS, DEFAULT_PUNCTUALITY_SCALE, monthsBefore
+} from '../../shared/payment-score';
 import { runMigrations } from '../db/migrate';
 import { insertClient } from './client-records';
 import {
-  PUNCTUALITY_SCALE_KEY, behaviourForClient, currentPunctualityScale,
+  DELAY_LIMIT_KEY, PUNCTUALITY_SCALE_KEY, behaviourForClient, currentScoreRules,
   loadPaymentBehaviour, punctualityScaleDistributions
 } from './payment-behaviour';
 
 let db: Database.Database;
 beforeAll(() => { db = new Database(':memory:'); runMigrations(db); });
 beforeEach(() => {
-  db.prepare('DELETE FROM app_settings WHERE key = ?').run(PUNCTUALITY_SCALE_KEY);
+  db.prepare('DELETE FROM app_settings WHERE key IN (?, ?)')
+    .run(PUNCTUALITY_SCALE_KEY, DELAY_LIMIT_KEY);
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
@@ -89,7 +92,7 @@ describe('o que entra no julgamento', () => {
   test('um cliente pontual chega a 100 e à classe A, e aparece em dia', () => {
     const clientId = punctualClient('Pontual');
     expect(only(clientId)).toMatchObject({
-      evaluated: 6, onTime: 6, settled: 6, score: 100, letter: 'A', provisional: false,
+      evaluated: 6, onTime: 6, settled: 6, score: 100, letter: 'A', confidence: 'consolidada',
       state: 'em_dia', overdueCve: 0
     });
   });
@@ -179,7 +182,7 @@ describe('estado de hoje, separado da letra', () => {
 });
 
 describe('a carteira', () => {
-  test('conta classificados e provisórios à parte, e a média é só dos classificados', () => {
+  test('conta quem tem letra e quem aguarda avaliação à parte', () => {
     punctualClient('Com histórico', 6);
     const novo = insertClient(db, { fullName: 'Acabou de entrar' });
     const dueDate = dueMonthsAgo(1);
@@ -187,20 +190,24 @@ describe('a carteira', () => {
     const semNada = insertClient(db, { fullName: 'Sem mensalidades' });
 
     const report = loadPaymentBehaviour(db, { asOf: TODAY });
+    // Quem acabou de entrar e pagou a primeira a horas já tem letra: é a decisão
+    // de 20/11. Sem nada para julgar continua sem letra — e sem pontos.
     expect(report.totals).toMatchObject({
-      classified: 1, provisional: 2, avgScore: 100, inGoodStandingPct: 100
+      classified: 2, awaiting: 1, avgScore: 100, inGoodStandingPct: 100
     });
-    expect(report.totals.distribution).toEqual({ A: 1, B: 0, C: 0, D: 0, E: 0 });
+    expect(report.totals.distribution).toEqual({ A: 2, B: 0, C: 0, D: 0, E: 0 });
     expect(report.clients.find((c) => c.clientId === semNada)).toMatchObject({
-      evaluated: 0, score: 0, letter: null, provisional: true
+      evaluated: 0, score: 0, letter: null, confidence: null
     });
-    expect(report.clients.find((c) => c.clientId === novo)?.letter).toBeNull();
+    expect(report.clients.find((c) => c.clientId === novo)).toMatchObject({
+      letter: 'A', confidence: 'inicial', evaluated: 1
+    });
   });
 
   test('uma carteira vazia não rebenta nem inventa médias', () => {
     const report = loadPaymentBehaviour(db, { asOf: TODAY });
     expect(report.clients).toEqual([]);
-    expect(report.totals).toMatchObject({ classified: 0, provisional: 0, avgScore: 0, inGoodStandingPct: 0 });
+    expect(report.totals).toMatchObject({ classified: 0, awaiting: 0, avgScore: 0, inGoodStandingPct: 0 });
   });
 
   test('quem nunca pagou cai na classe E', () => {
@@ -225,13 +232,15 @@ describe('a escala da pontualidade', () => {
     return clientId;
   }
 
-  test('por escolher, vale a de omissão', () => {
-    expect(currentPunctualityScale(db)).toBe(DEFAULT_PUNCTUALITY_SCALE);
+  test('por escolher, valem as de omissão', () => {
+    expect(currentScoreRules(db)).toEqual({
+      scale: DEFAULT_PUNCTUALITY_SCALE, delayLimitDays: DEFAULT_DELAY_LIMIT_DAYS
+    });
   });
 
   test('um valor estragado na base não deixa a carteira sem classificação', () => {
     setScale('a escala do costume');
-    expect(currentPunctualityScale(db)).toBe(DEFAULT_PUNCTUALITY_SCALE);
+    expect(currentScoreRules(db).scale).toBe(DEFAULT_PUNCTUALITY_SCALE);
     const clientId = punctualClient('Com lixo guardado');
     expect(only(clientId).letter).toBe('A');
   });
@@ -240,17 +249,35 @@ describe('a escala da pontualidade', () => {
     const clientId = alwaysLate('Paga tarde');
     setScale('tudo_ou_nada');
     expect(only(clientId).letter).toBe('E');
+    // Com o limite de atraso nos 15 dias, duas semanas de atraso quase não
+    // deixam pontos no critério do atraso, e as duas escalas brandas acabam na
+    // mesma letra — a diferença entre elas fica nos pontos.
     setScale('generosa');
-    expect(only(clientId).letter).toBe('C');
+    expect(only(clientId).letter).toBe('D');
+    const brando = only(clientId).score;
     setScale('exigente');
     expect(only(clientId).letter).toBe('D');
+    expect(brando).toBeGreaterThan(only(clientId).score);
   });
 
-  test('o relatório diz com que escala foi calculado', () => {
+  test('o relatório diz com que regras foi calculado', () => {
     setScale('generosa');
-    expect(loadPaymentBehaviour(db, { asOf: TODAY }).scale).toBe('generosa');
-    // Quem pede uma escala em concreto manda sobre o que está guardado.
-    expect(loadPaymentBehaviour(db, { asOf: TODAY, scale: 'tudo_ou_nada' }).scale).toBe('tudo_ou_nada');
+    const report = loadPaymentBehaviour(db, { asOf: TODAY });
+    expect(report.rules.scale).toBe('generosa');
+    expect(report.rules.delayLimitDays).toBe(DEFAULT_DELAY_LIMIT_DAYS);
+    // Quem pede regras em concreto manda sobre o que está guardado.
+    const pedido = loadPaymentBehaviour(db, {
+      asOf: TODAY, rules: { scale: 'tudo_ou_nada', delayLimitDays: 30 }
+    });
+    expect(pedido.rules).toEqual({ scale: 'tudo_ou_nada', delayLimitDays: 30 });
+  });
+
+  test('o limite do atraso guardado entra na conta', () => {
+    setScale('exigente');
+    db.prepare(
+      "INSERT INTO app_settings (key, value) VALUES ('punctualityDelayLimitDays', '30')"
+    ).run();
+    expect(currentScoreRules(db)).toEqual({ scale: 'exigente', delayLimitDays: 30 });
   });
 
   test('a pré-visualização dá as três de uma vez, sem mexer no que está guardado', () => {
@@ -262,8 +289,8 @@ describe('a escala da pontualidade', () => {
     expect(previews.map((p) => p.scale)).toEqual(['tudo_ou_nada', 'generosa', 'exigente']);
     for (const preview of previews) expect(preview.classified).toBe(2);
     expect(previews.find((p) => p.scale === 'tudo_ou_nada')!.distribution).toMatchObject({ A: 1, E: 1 });
-    expect(previews.find((p) => p.scale === 'generosa')!.distribution).toMatchObject({ A: 1, C: 1 });
+    expect(previews.find((p) => p.scale === 'generosa')!.distribution).toMatchObject({ A: 1, D: 1 });
     expect(previews.find((p) => p.scale === 'exigente')!.distribution).toMatchObject({ A: 1, D: 1 });
-    expect(currentPunctualityScale(db)).toBe('exigente');
+    expect(currentScoreRules(db).scale).toBe('exigente');
   });
 });

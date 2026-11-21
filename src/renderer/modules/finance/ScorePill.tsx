@@ -9,7 +9,15 @@ import { classInfo, type PaymentClass, type PaymentTrend } from '../../../shared
  */
 export function ScorePill({ letter }: { letter: PaymentClass | null }) {
   if (!letter) {
-    return <span className="score-pill is-none" title="Ainda sem mensalidades bastantes">Sem histórico</span>;
+    // Não é falta de histórico — é não haver ainda nada para julgar: nenhuma
+    // mensalidade vencida e nenhuma paga. Basta uma das duas para ganhar letra.
+    // Duas palavras, porque a coluna da classe tem 116 px: "Aguarda avaliação"
+    // dava 118 e saía cortada. O que falta para haver letra vai no `title`.
+    return (
+      <span className="score-pill is-none" title="Sem mensalidade vencida nem paga">
+        Por avaliar
+      </span>
+    );
   }
   const info = classInfo(letter);
   return (

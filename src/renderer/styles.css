@@ -7745,6 +7745,30 @@ button.danger:disabled {
   gap: var(--space-2);
 }
 
+/* O bloco ocupa as duas colunas para a comparação respirar, mas as caixas das
+   escolhas ficam da largura de um campo normal: um input a toda a largura não
+   se lê e não se parece com nada à volta. Limite absoluto e não 50% — quando
+   a grelha passa a uma coluna, metade dela dava uma caixa de 131px.
+   As duas regras ficam lado a lado, e empilham quando já não cabem. */
+.scale-field-rules {
+  display: flex;
+  flex-wrap: wrap;
+  /* Pelo fundo, não pelo topo: a etiqueta do limite ocupa duas linhas e a da
+     escala uma só, e alinhados pelo topo os dois campos ficavam a alturas
+     diferentes. É nas caixas que o olho pousa. */
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.scale-field-rules > .field:first-child {
+  flex: 1 1 18rem;
+  max-width: min(25rem, 100%);
+}
+
+.scale-field-rules > .field + .field {
+  flex: 0 1 11rem;
+}
+
 .scale-compare {
   border-collapse: collapse;
   font-size: var(--fs-xs);
@@ -7798,6 +7822,14 @@ button.danger:disabled {
 
 .scale-compare tr.is-chosen th[scope='row'] {
   font-weight: 700;
+}
+
+/* Seis filtros de classe, o selector de colunas e as regras em vigor não cabem
+   numa linha a 1225 px. A barra parte, em vez de empurrar o módulo para fora do
+   ecrã: sem isto, a `.filter-bar` (que é `nowrap`) alargava o módulo inteiro e
+   punha scroll horizontal na página toda, não na barra. */
+.behaviour-module .filter-bar {
+  flex-wrap: wrap;
 }
 
 /* A escala em vigor, junto aos filtros do Comportamento. */

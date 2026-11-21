@@ -1,4 +1,4 @@
-import { CalendarCheck, Gauge, ThumbsUp, UserPlus } from 'lucide-react';
+import { CalendarCheck, Gauge, ThumbsUp, TrendingDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Badge, Button, ColumnPicker, DataTable, EmptyState, ErrorRetry,
@@ -9,8 +9,8 @@ import { authFetch } from '../../lib/auth';
 import { useColumnVisibility } from '../../lib/columnVisibility';
 import { formatCve } from '../../lib/format';
 import {
-  FINANCIAL_STATE_LABELS, PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_LABELS,
-  type PaymentClass
+  FINANCIAL_STATE_LABELS, PAYMENT_CLASS_LETTERS, PAYMENT_CONFIDENCE_LABELS,
+  PUNCTUALITY_SCALE_LABELS, type PaymentClass
 } from '../../../shared/payment-score';
 import type { ClientBehaviour, PaymentBehaviourReport } from '../../types';
 import { ScorePill, TrendIcon } from './ScorePill';
@@ -50,15 +50,25 @@ const COLUMNS: DataTableColumn<ClientBehaviour>[] = [
     cell: (c) => <ScorePill letter={c.letter} />
   },
   {
-    // Sem histórico não leva pontuação: com uma mensalidade paga a horas a
-    // conta chega a 100 (os meses sem fatura contam limpos) e um 100 ao lado de
-    // "Sem histórico" abria a lista com o cliente que menos se conhece.
-    // Quantas mensalidades sustentam o número está na coluna Avaliadas.
     header: 'Pontuação',
     align: 'center',
-    sortValue: (c) => (c.provisional ? null : c.score),
+    sortValue: (c) => (c.letter === null ? null : c.score),
     defaultDirection: 'desc',
-    cell: (c) => (c.provisional ? <span>—</span> : <b>{c.score}</b>)
+    cell: (c) => (c.letter === null ? <span>—</span> : <b>{c.score}</b>)
+  },
+  {
+    // A coluna que impede o mal-entendido: um 100 tirado de uma mensalidade não
+    // é o mesmo juízo que um 100 tirado de doze. Ordena pelo número de
+    // mensalidades, que é a grandeza por baixo do rótulo.
+    header: 'Confiança',
+    align: 'center',
+    sortValue: (c) => (c.confidence === null ? null : c.evaluated),
+    defaultDirection: 'desc',
+    cell: (c) => (
+      c.confidence === null
+        ? <span>—</span>
+        : <span title={`${c.evaluated} mensalidades avaliadas`}>{PAYMENT_CONFIDENCE_LABELS[c.confidence]}</span>
+    )
   },
   {
     header: 'Tendência',
@@ -105,14 +115,14 @@ const COLUMNS: DataTableColumn<ClientBehaviour>[] = [
 const HEADERS = COLUMNS.map((column) => column.header);
 
 /**
- * A 1225 px (o ecrã real, 1920 a 150%) a tabela dispõe de 918 px, e as dez
- * colunas pedem 1178 — Estado e Vencido ficavam fora do ecrã, sem forma de lá
- * chegar. Estas três são as que menos pesam na decisão de quem cobra: o nome
- * identifica melhor do que o código, e a pontualidade e o número de
- * mensalidades detalham um juízo que a classe já resume. Num monitor maior
- * voltam num clique, em "Colunas".
+ * A 1225 px (o ecrã real, 1920 a 150%) a tabela dispõe de 918 px, e as onze
+ * colunas pedem bem mais — as últimas ficavam fora do ecrã, sem forma de lá
+ * chegar. Estas quatro são as que menos pesam na decisão de quem cobra: o nome
+ * identifica melhor do que o código, e a pontualidade, o atraso médio e o
+ * número de mensalidades detalham um juízo que a classe, a pontuação e a
+ * confiança já resumem. Num monitor maior voltam num clique, em "Colunas".
  */
-const DEFAULT_HIDDEN = ['Código', 'Pontualidade', 'Avaliadas'];
+const DEFAULT_HIDDEN = ['Código', 'Pontualidade', 'Atraso médio', 'Avaliadas'];
 
 type Filter = PaymentClass | 'all' | 'none';
 
@@ -177,7 +187,7 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
           icon={ThumbsUp}
           label="Bons pagadores"
           value={String(trusted)}
-          trend="classes A e B"
+          trend={`${totals?.alwaysOnTimePct || 0}% nunca pagaram tarde`}
           tone="success"
         />
         <MetricCard
@@ -188,11 +198,11 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
           tone={watch > 0 ? 'warning' : 'info'}
         />
         <MetricCard
-          icon={UserPlus}
-          label="Sem histórico"
-          value={String(totals?.provisional || 0)}
-          trend="menos de três mensalidades"
-          tone="neutral"
+          icon={TrendingDown}
+          label="A piorar"
+          value={String(totals?.declining || 0)}
+          trend={`${totals?.improving || 0} a melhorar`}
+          tone={totals?.declining ? 'warning' : 'neutral'}
         />
       </MetricGrid>
 
@@ -222,9 +232,9 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
           variant="ghost"
           className={`segmented-tab${filter === 'none' ? ' is-active' : ''}`}
           onClick={() => setFilter('none')}
-          disabled={!totals?.provisional}
+          disabled={!totals?.awaiting}
         >
-          Sem histórico ({totals?.provisional || 0})
+          Aguarda avaliação ({totals?.awaiting || 0})
         </Button>
         <ColumnPicker
           headers={HEADERS}
@@ -234,8 +244,11 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
         />
         {/* Sem isto as letras não se explicam a quem não abriu as Configurações. */}
         {report && (
-          <span className="behaviour-scale" title="Configurações › Faturação">
-            Escala {PUNCTUALITY_SCALE_LABELS[report.scale].toLowerCase()}
+          <span
+            className="behaviour-scale"
+            title="Escala da pontualidade e atraso médio que vale zero — Configurações › Faturação"
+          >
+            {PUNCTUALITY_SCALE_LABELS[report.rules.scale]} · atraso {report.rules.delayLimitDays} d
           </span>
         )}
       </FilterBar>
@@ -246,7 +259,7 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
         defaultSort={{ key: 'Pontuação', direction: 'desc' }}
         onRowClick={onOpenClient ? (c) => onOpenClient(c.clientId) : undefined}
         // Cliente encolhe com reticências; o resto tem a largura do seu dado.
-        gridTemplateColumns="80px minmax(140px, 1.4fr) 116px 92px 76px 116px 112px 96px 100px 112px"
+        gridTemplateColumns="80px minmax(140px, 1.4fr) 116px 92px 116px 76px 116px 112px 96px 100px 112px"
         empty={
           <EmptyState
             title="Sem classificações"

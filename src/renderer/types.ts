@@ -1,7 +1,7 @@
 import type { UpdateStatus } from '../shared/update-status';
 import type { BackgroundSettings, BackgroundSettingsChange } from '../shared/background-settings';
 import type {
-  FinancialState, PaymentClass, PaymentScore, PaymentTrend, PunctualityScale
+  FinancialState, PaymentClass, PaymentScore, PaymentTrend, ScoreRules
 } from '../shared/payment-score';
 
 declare global {
@@ -261,13 +261,17 @@ export type ClientBehaviour = PaymentScore & {
 export type PaymentBehaviourReport = {
   generatedAt: string;
   asOf: string;
-  scale: PunctualityScale;
+  rules: ScoreRules;
   totals: {
     classified: number;
-    provisional: number;
+    awaiting: number;
     avgScore: number;
     inGoodStandingPct: number;
+    alwaysOnTimePct: number;
+    improving: number;
+    declining: number;
     distribution: Record<PaymentClass, number>;
+    overdueByClass: Record<PaymentClass, number>;
   };
   clients: ClientBehaviour[];
 };

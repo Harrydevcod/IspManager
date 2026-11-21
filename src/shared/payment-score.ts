@@ -78,16 +78,58 @@ export function punctualityScaleOf(value: unknown): PunctualityScale {
   return isPunctualityScale(value) ? value : DEFAULT_PUNCTUALITY_SCALE;
 }
 
-/** Atraso médio a partir do qual esse critério vale zero. */
-export const DELAY_SCALE_DAYS = 30;
-/** Abaixo disto não se atribui letra: uma mensalidade paga não faz um bom pagador. */
-export const MIN_EVALUATED = 3;
-/** Meses que a regularidade observa. */
+/** Atraso médio a partir do qual esse critério vale zero; escolhe-se em Configurações › Faturação. */
+export const DEFAULT_DELAY_LIMIT_DAYS = 15;
+/** Limites do que se pode escolher: um limite de um dia fazia qualquer atraso valer zero. */
+export const DELAY_LIMIT_RANGE = { min: 5, max: 90 } as const;
+/** Meses que a regularidade recente observa. */
 export const REGULARITY_MONTHS = 6;
 /** Janela de histórico que a pontuação observa. */
 export const SCORE_WINDOW_MONTHS = 12;
 /** Distância a que se mede a tendência. */
 export const TREND_DAYS = 30;
+
+/** As duas regras que se escolhem; tudo o mais na fórmula é fixo. */
+export type ScoreRules = { scale: PunctualityScale; delayLimitDays: number };
+
+export const DEFAULT_SCORE_RULES: ScoreRules = {
+  scale: DEFAULT_PUNCTUALITY_SCALE,
+  delayLimitDays: DEFAULT_DELAY_LIMIT_DAYS
+};
+
+/** O que estiver guardado, dentro dos limites; lixo cai na omissão. */
+export function delayLimitOf(value: unknown): number {
+  const days = Math.round(Number(value));
+  if (!Number.isFinite(days)) return DEFAULT_DELAY_LIMIT_DAYS;
+  return Math.min(DELAY_LIMIT_RANGE.max, Math.max(DELAY_LIMIT_RANGE.min, days));
+}
+
+export const PAYMENT_CONFIDENCE_CODES = ['inicial', 'em_formacao', 'consolidada', 'elevada'] as const;
+export type PaymentConfidence = (typeof PAYMENT_CONFIDENCE_CODES)[number];
+
+export const PAYMENT_CONFIDENCE_LABELS: Record<PaymentConfidence, string> = {
+  inicial: 'Inicial',
+  em_formacao: 'Em formação',
+  consolidada: 'Consolidada',
+  elevada: 'Elevada'
+};
+
+/**
+ * Quanta mensalidade sustenta a letra — e nada mais do que isso: não entra na
+ * pontuação nem na categoria.
+ *
+ * É o que separa um 100 tirado de uma mensalidade de um 100 tirado de doze. A
+ * classificação começa na primeira mensalidade avaliável, por decisão do
+ * utilizador; a maturidade do histórico diz-se aqui, à vista, em vez de se
+ * esconder a letra até haver três faturas.
+ */
+export function confidenceFor(evaluated: number): PaymentConfidence | null {
+  if (evaluated <= 0) return null;
+  if (evaluated <= 2) return 'inicial';
+  if (evaluated <= 5) return 'em_formacao';
+  if (evaluated <= 11) return 'consolidada';
+  return 'elevada';
+}
 
 /**
  * O estado de hoje, que não se mistura com a letra: um cliente de classe A pode
@@ -119,21 +161,22 @@ export type ScoreParts = { punctuality: number; delay: number; settled: number; 
 
 export type PaymentScore = {
   score: number;
-  /** `null` enquanto o histórico não chegar a `MIN_EVALUATED`. */
+  /** `null` só sem nada para julgar: aí o cliente aguarda a primeira avaliação. */
   letter: PaymentClass | null;
-  provisional: boolean;
+  confidence: PaymentConfidence | null;
   evaluated: number;
   onTime: number;
   settled: number;
   punctualityPct: number;
   avgDelayDays: number;
-  cleanMonths: number;
+  /** Denominador da regularidade recente — zero tira esse critério da conta. */
+  recentEvaluated: number;
   parts: ScoreParts;
 };
 
 const EMPTY_SCORE: PaymentScore = {
-  score: 0, letter: null, provisional: true, evaluated: 0, onTime: 0, settled: 0,
-  punctualityPct: 0, avgDelayDays: 0, cleanMonths: 0,
+  score: 0, letter: null, confidence: null, evaluated: 0, onTime: 0, settled: 0,
+  punctualityPct: 0, avgDelayDays: 0, recentEvaluated: 0,
   parts: { punctuality: 0, delay: 0, settled: 0, regularity: 0 }
 };
 
@@ -161,8 +204,12 @@ export function monthKeysEndingAt(iso: string, months: number): string[] {
 }
 
 /**
- * O que aconteceu a uma mensalidade até `asOf`. `null` se ainda não tinha
- * vencido nessa data: o que não venceu não se julga.
+ * O que aconteceu a uma mensalidade até `asOf`. `null` quando não há nada a
+ * julgar: ainda não venceu e também ainda não foi paga.
+ *
+ * Uma mensalidade liquidada julga-se sempre, mesmo antes de vencer — é o que
+ * faz a primeira mensalidade paga adiantado valer uma letra desde logo, em vez
+ * de ficar à espera do vencimento para dizer o que já se sabe.
  *
  * Liquidada é quando a soma corrida dos recibos cobre o devido — e o dia em que
  * isso acontece é o do recibo que fechou o saldo, não o do último que entrou.
@@ -171,7 +218,7 @@ export function monthKeysEndingAt(iso: string, months: number): string[] {
 export function outcomeFor(invoice: InvoiceFact, asOf: string): InvoiceOutcome | null {
   const due = dayStartUtc(invoice.dueDate);
   const at = dayStartUtc(asOf);
-  if (due === null || at === null || due > at) return null;
+  if (due === null || at === null) return null;
 
   let received = 0;
   let settledOn: string | null = null;
@@ -182,6 +229,8 @@ export function outcomeFor(invoice: InvoiceFact, asOf: string): InvoiceOutcome |
     received += receipt.amountCve;
     if (settledOn === null && isSettled(invoice.amountCve - received)) settledOn = receipt.date;
   }
+
+  if (due > at && settledOn === null) return null;
 
   // Por pagar: o atraso é o que já corre, contado até à data de corte.
   const reference = settledOn ?? asOf;
@@ -196,17 +245,19 @@ export function outcomeFor(invoice: InvoiceFact, asOf: string): InvoiceOutcome |
 }
 
 /**
- * A pontuação de um cliente na data dada.
+ * A pontuação de um cliente na data dada — desde a primeira mensalidade
+ * avaliável, sem histórico mínimo.
  *
- * Sem mensalidades avaliáveis devolve zeros, nunca pontos de graça: três dos
- * quatro critérios dariam nota máxima a um cliente que nunca teve nada para
- * pagar, o que é exactamente o erro que a regra do histórico mínimo evita.
+ * Sem nada para julgar devolve zeros e letra nenhuma, nunca pontos de graça:
+ * três dos quatro critérios dariam nota máxima a um cliente que nunca teve nada
+ * para pagar.
  */
 export function scoreClient(
   invoices: InvoiceFact[],
   asOf: string,
-  scale: PunctualityScale = DEFAULT_PUNCTUALITY_SCALE
+  rules: Partial<ScoreRules> = {}
 ): PaymentScore {
+  const { scale, delayLimitDays } = { ...DEFAULT_SCORE_RULES, ...rules };
   const from = monthsBefore(asOf, SCORE_WINDOW_MONTHS);
   const outcomes = invoices
     .filter((invoice) => invoice.dueDate >= from)
@@ -220,35 +271,41 @@ export function scoreClient(
   const settled = outcomes.filter((outcome) => outcome.settled).length;
   const delays = outcomes.map((outcome) => Math.max(0, outcome.daysLate));
   const avgDelay = delays.reduce((sum, days) => sum + days, 0) / evaluated;
-
-  // Mês limpo: nenhuma mensalidade vencida nele foi paga com atraso nem continua
-  // por pagar. Mês sem mensalidade exigível conta limpo — serviço parado ou
-  // cancelado não é incumprimento.
-  const months = monthKeysEndingAt(asOf, REGULARITY_MONTHS);
-  const cleanMonths = months.filter((month) => !outcomes.some(
-    (outcome) => outcome.dueDate.slice(0, 7) === month && outcome.daysLate > 0
-  )).length;
-
   const credit = outcomes.reduce((sum, outcome) => sum + punctualityCredit(outcome, scale), 0);
-  const parts: ScoreParts = {
-    punctuality: SCORE_WEIGHTS.punctuality * (credit / evaluated),
-    delay: SCORE_WEIGHTS.delay * Math.max(0, 1 - avgDelay / DELAY_SCALE_DAYS),
-    settled: SCORE_WEIGHTS.settled * (settled / evaluated),
-    regularity: SCORE_WEIGHTS.regularity * (cleanMonths / REGULARITY_MONTHS)
-  };
-  const score = Math.round(parts.punctuality + parts.delay + parts.settled + parts.regularity);
-  const provisional = evaluated < MIN_EVALUATED;
+
+  // Regularidade recente: o mesmo crédito da pontualidade, restrito aos últimos
+  // meses. Mede se o comportamento de agora confirma ou desmente o do ano todo.
+  const recentFrom = monthsBefore(asOf, REGULARITY_MONTHS);
+  const recent = outcomes.filter((outcome) => outcome.dueDate >= recentFrom);
+  const recentCredit = recent.reduce((sum, outcome) => sum + punctualityCredit(outcome, scale), 0);
+
+  // Um critério sem denominador sai da fórmula e os pesos restantes escalam
+  // para continuar a somar 100. Só a regularidade recente pode ficar sem ele —
+  // serviço parado ou cancelado há mais de meio ano. Dar-lhe nota máxima era
+  // premiar quem já não fatura; dar-lhe zero era castigá-lo por isso.
+  const measured: Array<readonly [keyof ScoreParts, number]> = [
+    ['punctuality', credit / evaluated],
+    ['delay', Math.max(0, 1 - avgDelay / delayLimitDays)],
+    ['settled', settled / evaluated],
+    ...(recent.length > 0 ? [['regularity', recentCredit / recent.length] as const] : [])
+  ];
+  const weight = measured.reduce((sum, [key]) => sum + SCORE_WEIGHTS[key], 0);
+
+  const parts: ScoreParts = { punctuality: 0, delay: 0, settled: 0, regularity: 0 };
+  for (const [key, ratio] of measured) parts[key] = ((SCORE_WEIGHTS[key] * 100) / weight) * ratio;
+  const total = parts.punctuality + parts.delay + parts.settled + parts.regularity;
+  const score = Math.min(100, Math.max(0, Math.round(total)));
 
   return {
     score,
-    letter: provisional ? null : classFor(score).letter,
-    provisional,
+    letter: classFor(score).letter,
+    confidence: confidenceFor(evaluated),
     evaluated,
     onTime,
     settled,
     punctualityPct: Math.round((onTime / evaluated) * 100),
     avgDelayDays: Math.round(avgDelay * 10) / 10,
-    cleanMonths,
+    recentEvaluated: recent.length,
     parts
   };
 }
@@ -291,14 +348,14 @@ export type PaymentTrend = 'up' | 'flat' | 'down' | 'unknown';
 export function trendFor(
   invoices: InvoiceFact[],
   asOf: string,
-  scale: PunctualityScale = DEFAULT_PUNCTUALITY_SCALE,
+  rules: Partial<ScoreRules> = {},
   backDays: number = TREND_DAYS
 ): PaymentTrend {
-  const now = scoreClient(invoices, asOf, scale);
+  const now = scoreClient(invoices, asOf, rules);
   const at = dayStartUtc(asOf);
   if (now.letter === null || at === null) return 'unknown';
   const before = scoreClient(
-    invoices, new Date(at - backDays * 86_400_000).toISOString().slice(0, 10), scale
+    invoices, new Date(at - backDays * 86_400_000).toISOString().slice(0, 10), rules
   );
   if (before.letter === null) return 'unknown';
   const moved = classRank(before.letter) - classRank(now.letter);
