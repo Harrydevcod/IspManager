@@ -7,6 +7,7 @@ import type { SortState } from '../../lib/listView';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type EffectivePaymentStatus, type PaymentRow, type SmsEventType } from '../../types';
+import { BEHAVIOUR_HEADERS, BEHAVIOUR_HIDDEN, BEHAVIOUR_WIDTHS } from '../finance/behaviourColumns';
 
 const paymentStatusTone = (status: EffectivePaymentStatus): 'success' | 'info' | 'danger' | 'neutral' | 'warn' => {
   switch (status) {
@@ -67,13 +68,13 @@ export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
   }
 ];
 
-export const PAYMENT_HEADERS = PAYMENT_COLUMNS.map((column) => column.header);
+export const PAYMENT_HEADERS = [...PAYMENT_COLUMNS.map((column) => column.header), ...BEHAVIOUR_HEADERS];
 /**
  * Num 1920 a 150% as oito não cabem ao lado do nome. Recebido sai por omissão:
  * só tem valor nas faturas meio pagas, e essas já se leem no Estado (Parcial)
  * e no Valor (o que falta). Fica em "Colunas".
  */
-export const PAYMENT_DEFAULT_HIDDEN = ['Recebido'];
+export const PAYMENT_DEFAULT_HIDDEN = ['Recebido', ...BEHAVIOUR_HIDDEN];
 
 type PaymentsListProps = {
   payments: PaymentRow[];
@@ -95,6 +96,11 @@ type PaymentsListProps = {
   onRevert: (payment: PaymentRow) => void;
   onRegenerate: (payment: PaymentRow) => void;
   hiddenColumns?: ReadonlySet<string>;
+  /**
+   * Vêm de fora porque o `PaymentsModule` ordena a lista inteira antes de
+   * cortar a página: as colunas que ordenam têm de ser as mesmas que desenham.
+   */
+  columns: DataTableColumn<PaymentRow>[];
 };
 
 export function PaymentsList({
@@ -116,7 +122,8 @@ export function PaymentsList({
   onOpenCancelForm,
   onRevert,
   onRegenerate,
-  hiddenColumns
+  hiddenColumns,
+  columns
 }: PaymentsListProps) {
   return (
     <DataTable
@@ -129,11 +136,11 @@ export function PaymentsList({
       onSortChange={onSortChange}
       onRowClick={(p) => onPreview(p)}
       // Cliente encolhe com reticências; o resto tem a largura do seu dado.
-      gridTemplateColumns="80px minmax(112px, 1.5fr) 104px 116px 108px 110px 116px 120px"
+      gridTemplateColumns={`80px minmax(112px, 1.5fr) 104px 116px 108px 110px 116px 120px ${BEHAVIOUR_WIDTHS}`}
       hiddenColumns={hiddenColumns}
       // Só o menu "⋯" (36px) e o cabeçalho "Ações".
       actionsWidth="64px"
-      columns={PAYMENT_COLUMNS}
+      columns={columns}
       actions={(p) => {
         if (p.documentType === 'sale_ticket') return <RowActionsMenu groups={[{ label: 'Talão de venda', items: [{ label: 'Abrir talão de venda', icon: <ReceiptText size={15} aria-hidden />, onClick: () => onPreview(p) }] }]} />;
         if (p.status === 'cancelled') return null;

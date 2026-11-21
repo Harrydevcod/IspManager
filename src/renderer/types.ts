@@ -258,6 +258,23 @@ export type ClientBehaviour = PaymentScore & {
   trend: PaymentTrend;
 };
 
+export type BehaviourPoint = {
+  /** `AAAA-MM`. */
+  month: string;
+  score: number;
+  letter: PaymentClass | null;
+  evaluated: number;
+};
+
+export type ClientBehaviourDetail = ClientBehaviour & { history: BehaviourPoint[] };
+
+export type PortfolioPoint = {
+  month: string;
+  classified: number;
+  avgScore: number;
+  distribution: Record<PaymentClass, number>;
+};
+
 export type PaymentBehaviourReport = {
   generatedAt: string;
   asOf: string;

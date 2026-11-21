@@ -9,6 +9,10 @@ import { SmsInbox } from './settings/SmsInbox';
 import { CustomerPortal } from './clients/CustomerPortal';
 import { authFetch, useAuth } from '../lib/auth';
 import { useColumnVisibility } from '../lib/columnVisibility';
+import { useBehaviourIndex } from '../lib/behaviourIndex';
+import {
+  BEHAVIOUR_HEADERS, BEHAVIOUR_HIDDEN, BEHAVIOUR_WIDTHS, behaviourColumns
+} from './finance/behaviourColumns';
 import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
 import { formatGb, fupRequest, perGbOf, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
@@ -71,10 +75,10 @@ const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
     cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
   }
 ];
-const CLIENT_HEADERS = CLIENT_COLUMNS.map((column) => column.header);
+const CLIENT_HEADERS = [...CLIENT_COLUMNS.map((column) => column.header), ...BEHAVIOUR_HEADERS];
 // Medido na base real (2026-11-06): 33 de 34 clientes em São Vicente — a coluna não distingue ninguém.
 // Escondida por omissão para a tabela caber a 1225 px; volta pelo botão Colunas.
-const CLIENT_HIDDEN_BY_DEFAULT = ['Ilha'];
+const CLIENT_HIDDEN_BY_DEFAULT = ['Ilha', ...BEHAVIOUR_HIDDEN];
 const DEFAULT_CLIENT_PAGE_SIZE = 25;
 const DEFAULT_CLIENT_STATUS_FILTER: 'all' | Client['status'] = 'active';
 
@@ -175,7 +179,14 @@ export function ClientsModule({
   const [bulkStatus, setBulkStatus] = useState<Client['status']>('suspended');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const selection = useRowSelection<number>();
+  const behaviour = useBehaviourIndex();
   const columnVisibility = useColumnVisibility('ispm.clients.hiddenColumns', CLIENT_HEADERS, CLIENT_HIDDEN_BY_DEFAULT);
+  // A classificacao chega depois da lista; sem o memo a tabela reordenava-se a
+  // cada render.
+  const clientColumns = useMemo(
+    () => [...CLIENT_COLUMNS, ...behaviourColumns<Client>((c) => c.id, behaviour)],
+    [behaviour]
+  );
   const confirm = useConfirm();
 
   const loadClients = useCallback(() => {
@@ -813,10 +824,10 @@ export function ClientsModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={setSelectedClient}
-            gridTemplateColumns="76px minmax(96px, 1.3fr) 88px minmax(0, 0.6fr) minmax(64px, 0.6fr) 68px 96px 80px"
+            gridTemplateColumns={`76px minmax(96px, 1.3fr) 88px minmax(0, 0.6fr) minmax(64px, 0.6fr) 68px 96px 80px ${BEHAVIOUR_WIDTHS}`}
             hiddenColumns={columnVisibility.hidden}
             actionsWidth="92px"
-            columns={CLIENT_COLUMNS}
+            columns={clientColumns}
             actions={(client) => {
               const canWhatsapp = !!normalizeWhatsappPhone(client.phone);
               return (

@@ -1487,6 +1487,9 @@ h2 {
 .filter-bar {
   display: flex;
   align-items: end;
+  /* Parte. Uma barra que nao parte nao cabe menos: alarga o modulo inteiro e
+     poe scroll horizontal na pagina toda, nao na barra. */
+  flex-wrap: wrap;
   gap: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--r2);
@@ -7824,13 +7827,239 @@ button.danger:disabled {
   font-weight: 700;
 }
 
-/* Seis filtros de classe, o selector de colunas e as regras em vigor não cabem
-   numa linha a 1225 px. A barra parte, em vez de empurrar o módulo para fora do
-   ecrã: sem isto, a `.filter-bar` (que é `nowrap`) alargava o módulo inteiro e
-   punha scroll horizontal na página toda, não na barra. */
-.behaviour-module .filter-bar {
-  flex-wrap: wrap;
+/* O comportamento da carteira, em Relatórios. */
+.behaviour-report {
+  display: grid;
+  gap: var(--space-5);
 }
+
+.behaviour-report-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.behaviour-report-rules {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* Em ecrã estreito a tabela rola dentro da sua caixa; a página não. */
+.behaviour-report-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.behaviour-report-table {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  /* Travada: esticada a toda a largura, os números afastam-se da linha a que
+     pertencem e deixa de se seguir com o olho. */
+  max-width: 44rem;
+  width: 100%;
+}
+
+.behaviour-report-table caption {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  padding-bottom: var(--space-2);
+  text-align: left;
+}
+
+.behaviour-report-table th,
+.behaviour-report-table td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2);
+  text-align: right;
+}
+
+.behaviour-report-table tbody th,
+.behaviour-report-table thead th:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.behaviour-report-table thead th {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.behaviour-report-table tbody td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quem desceu primeiro, quem subiu a seguir: é a descida que obriga a agir. */
+.behaviour-report-moved {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  max-width: 44rem;
+}
+
+.behaviour-report-moved h3 {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.behaviour-report-moved ul {
+  display: grid;
+  gap: var(--space-1-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.behaviour-report-moved li {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.behaviour-report-none {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  margin: 0;
+}
+
+/* O comportamento na ficha financeira: de onde vem a letra deste cliente. */
+.client-behaviour {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.client-behaviour-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.client-behaviour-score {
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.client-behaviour-confidence,
+.client-behaviour-empty,
+.client-behaviour-action {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  margin: 0;
+}
+
+.client-behaviour-parts {
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  max-width: 28rem;
+  width: 100%;
+}
+
+.client-behaviour-parts caption {
+  color: var(--text-3);
+  padding-bottom: var(--space-1);
+  text-align: left;
+}
+
+.client-behaviour-parts th,
+.client-behaviour-parts td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: right;
+}
+
+.client-behaviour-parts tbody th,
+.client-behaviour-parts thead th:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.client-behaviour-parts thead th {
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.client-behaviour-parts tbody td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Os factos por baixo das contas, em pares. */
+.client-behaviour-facts {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin: 0;
+  /* Os quatro factos numa linha: a 34rem o último caía sozinho para baixo. */
+  max-width: 44rem;
+}
+
+.client-behaviour-facts dt {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.client-behaviour-facts dd {
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+/* Doze meses numa tira: a forma mais curta de ver se melhorou ou piorou. */
+.client-behaviour-history-label {
+  color: var(--text-3);
+  display: block;
+  font-size: var(--fs-xs);
+  padding-bottom: var(--space-1);
+}
+
+.client-behaviour-history ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.client-behaviour-history li {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 2.75rem;
+  padding: var(--space-1) var(--space-1-5);
+}
+
+.client-behaviour-history-month {
+  color: var(--text-3);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.client-behaviour-history-letter {
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* A mesma rampa das pílulas: a cor diz a classe antes de a letra se ler. */
+.client-behaviour-history li.is-a { border-color: color-mix(in oklch, var(--success) 35%, transparent); color: var(--success); }
+.client-behaviour-history li.is-b { border-color: color-mix(in oklch, var(--info) 35%, transparent); color: var(--info); }
+.client-behaviour-history li.is-c { border-color: color-mix(in oklch, var(--warn) 35%, transparent); color: var(--warn); }
+.client-behaviour-history li.is-d { border-color: color-mix(in oklch, var(--danger) 30%, transparent); color: color-mix(in oklch, var(--warn) 45%, var(--danger)); }
+.client-behaviour-history li.is-e { border-color: color-mix(in oklch, var(--danger) 40%, transparent); color: var(--danger); }
+.client-behaviour-history li.is-none { color: var(--text-3); }
 
 /* A escala em vigor, junto aos filtros do Comportamento. */
 .behaviour-scale {

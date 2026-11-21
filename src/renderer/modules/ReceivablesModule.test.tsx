@@ -128,7 +128,11 @@ describe('Pendentes', () => {
   test('uma coluna por dado, cada uma com o seu cabecalho', async () => {
     const container = await mount();
     const headers = [...container.querySelectorAll('[role="columnheader"]')].map((n) => n.textContent?.trim());
-    expect(headers).toEqual(['Código', 'Cliente', 'Zona', 'Telefone', 'Faturas', 'Mais antiga', 'Antiguidade', 'Em aberto', 'Crédito']);
+    // O detalhe da classificacao comeca escondido; so a classe se ve.
+    expect(headers).toEqual([
+      'Código', 'Cliente', 'Zona', 'Telefone', 'Faturas', 'Mais antiga', 'Antiguidade',
+      'Em aberto', 'Crédito', 'Classe'
+    ]);
     for (const row of container.querySelectorAll('.data-table-row')) {
       expect(row.querySelectorAll('[role="cell"]')).toHaveLength(headers.length);
     }
@@ -176,10 +180,11 @@ describe('Pendentes', () => {
 
     const headers = [...container.querySelectorAll('[role="columnheader"]')].map((n) => n.textContent?.trim());
     expect(headers).not.toContain('Telefone');
-    expect(headers).toHaveLength(8);
+    expect(headers).toHaveLength(9);
     for (const row of container.querySelectorAll('.data-table-row')) {
-      expect(row.querySelectorAll('[role="cell"]')).toHaveLength(8);
+      expect(row.querySelectorAll('[role="cell"]')).toHaveLength(9);
     }
-    expect(localStorage.getItem('ispm.finance.receivables.hiddenColumns')).toBe('["Telefone"]');
+    const guardado = JSON.parse(localStorage.getItem('ispm.finance.receivables.hiddenColumns') || '[]');
+    expect(guardado).toContain('Telefone');
   });
 });

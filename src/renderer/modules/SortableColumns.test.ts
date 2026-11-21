@@ -40,6 +40,7 @@ describe('colunas ordenáveis', () => {
       'finance/PaymentBehaviourTab.tsx',
       'finance/PortfolioTable.tsx',
       'finance/UpcomingSuspensionsCard.tsx',
+      'finance/behaviourColumns.tsx',
       'payments/PaymentsList.tsx',
       'plans/PlanChangeHistory.tsx',
       'router/ClientUsage.tsx',

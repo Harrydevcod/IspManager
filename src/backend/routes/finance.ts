@@ -22,7 +22,9 @@ import {
   settleInvoices,
   voidReceipt
 } from '../lib/payments';
-import { loadPaymentBehaviour, punctualityScaleDistributions } from '../lib/payment-behaviour';
+import {
+  clientBehaviourDetail, loadPaymentBehaviour, portfolioHistory, punctualityScaleDistributions
+} from '../lib/payment-behaviour';
 import { loadReceivables } from '../lib/receivables';
 import { loadClientFinance } from '../lib/client-finance';
 import { cancelPaymentPlan, cancelPaymentPlanSchema, createPaymentPlan, createPaymentPlanSchema } from '../lib/payment-plans';
@@ -923,6 +925,22 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
   // nas Configuracoes, para ela se fazer sobre numeros e nao sobre adjectivos.
   app.get('/api/finance/payment-scales', { preHandler: requireRole(['admin', 'operator']) },
     async () => ({ scales: punctualityScaleDistributions(getSqliteDatabase()) }));
+
+  // A evolucao da carteira, mes a mes: mesma dobra, doze datas de corte.
+  app.get('/api/finance/payment-behaviour/history', { preHandler: requireRole(['admin', 'operator']) },
+    async () => ({ months: portfolioHistory(getSqliteDatabase()) }));
+
+  // A classificacao de um cliente com a sua evolucao, para a ficha financeira.
+  app.get('/api/finance/payment-behaviour/:id', { preHandler: requireRole(['admin', 'operator']) },
+    async (request, reply) => {
+      const id = Number((request.params as { id: string }).id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return reply.status(400).send({ error: 'Cliente invalido' });
+      }
+      const detail = clientBehaviourDetail(getSqliteDatabase(), id);
+      if (!detail) return reply.status(404).send({ error: 'Cliente nao encontrado' });
+      return detail;
+    });
 
   app.get('/api/clients/:id/finance', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
