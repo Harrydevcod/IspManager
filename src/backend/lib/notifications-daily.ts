@@ -41,16 +41,19 @@ export function runNotificationsDailyIfDue(now: Date = new Date()): Notification
       focus: 'overdue'
     });
   }
-  // Quem desceu de classe no último mês. O uid leva o cliente e o mês, para o
-  // mesmo cliente não encher o sino todos os dias com a mesma descida.
+  // Quantos desceram de classe, e não quem: o histórico do sino não é filtrado
+  // por papel (só o `now` é), e sincroniza com o telemóvel. Um nome com a
+  // classe de pagamento ao lado é informação financeira de um cliente, e fica
+  // atrás de `/api/finance/payment-behaviour`, que exige admin ou operador.
+  // É também o que a suspensão a chegar já faz, uma linha acima.
   const drops = classDrops(db, today);
-  for (const drop of drops) {
+  if (drops.length > 0) {
     recordNotification(db, {
-      uid: `behaviour:${drop.clientId}:${today.slice(0, 7)}`,
+      uid: `behaviour-drops:${today}`,
       kind: 'behaviour_drop',
       severity: 'warn',
-      title: `${drop.clientName} desceu de ${drop.from} para ${drop.to}`,
-      detail: 'Comportamento de pagamento no último mês.',
+      title: `${drops.length} ${drops.length === 1 ? 'cliente desceu' : 'clientes desceram'} de classe`,
+      detail: null,
       section: 'finance',
       focus: 'behaviour'
     });
