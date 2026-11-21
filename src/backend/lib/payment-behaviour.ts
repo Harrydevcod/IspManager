@@ -2,7 +2,8 @@ import type { Database } from 'better-sqlite3';
 import { businessDay } from '../../shared/business-day';
 import {
   PAYMENT_CLASS_LETTERS, PUNCTUALITY_SCALE_CODES, SCORE_WINDOW_MONTHS,
-  delayLimitOf, monthKeysEndingAt, monthsBefore, punctualityScaleOf, scoreClient, trendFor,
+  TREND_DAYS, classRank, delayLimitOf, monthKeysEndingAt, monthsBefore,
+  punctualityScaleOf, scoreClient, trendFor,
   type FinancialState, type InvoiceFact, type PaymentClass, type PaymentScore,
   type PaymentTrend, type PunctualityScale, type ScoreRules
 } from '../../shared/payment-score';
@@ -345,4 +346,39 @@ export function portfolioHistory(db: Database, asOf?: string): PortfolioPoint[] 
       ) as Record<PaymentClass, number>
     };
   });
+}
+
+export type ClassDrop = {
+  clientId: number;
+  clientName: string;
+  from: PaymentClass;
+  to: PaymentClass;
+};
+
+/**
+ * Quem desceu de classe no último mês.
+ *
+ * A comparação sai do mesmo cálculo com outra data de corte — não há tabela de
+ * histórico a consultar nem job de recálculo a esperar (ADR 0026). Só conta a
+ * descida: subir é boa notícia e boa notícia não precisa de sino.
+ */
+export function classDrops(db: Database, asOf?: string, backDays: number = TREND_DAYS): ClassDrop[] {
+  const at = asOf ?? businessDay();
+  const antes = new Date(Date.parse(`${at}T00:00:00Z`) - backDays * 86_400_000)
+    .toISOString().slice(0, 10);
+  const rules = currentScoreRules(db);
+  const facts = loadFacts(db, monthsBefore(at, FACT_WINDOW_MONTHS));
+
+  const drops: ClassDrop[] = [];
+  for (const row of loadClients(db)) {
+    const invoices = facts.get(row.clientId) ?? [];
+    const agora = scoreClient(invoices, at, rules).letter;
+    const dantes = scoreClient(invoices, antes, rules).letter;
+    // Ganhar a primeira letra não é descer: antes não havia nada para comparar.
+    if (agora === null || dantes === null) continue;
+    if (classRank(agora) > classRank(dantes)) {
+      drops.push({ clientId: row.clientId, clientName: row.clientName, from: dantes, to: agora });
+    }
+  }
+  return drops;
 }

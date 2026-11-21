@@ -2,6 +2,8 @@ import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr } from './payments';
 import { openPaymentLinkSql } from './vinti4';
 import { planProtectedSql } from './payment-plans';
+import { loadPaymentBehaviour } from './payment-behaviour';
+import type { PaymentClass } from '../../shared/payment-score';
 import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReminderTemplate,
@@ -49,6 +51,35 @@ export function loadFunnel(): FunnelStage[] {
     { stage: 'suspension', threshold: suspensionDays }
   ];
   return stages.sort((a, b) => a.threshold - b.threshold);
+}
+
+/**
+ * Quantos dias antes do vencimento se lembra um cliente, pela classe dele.
+ *
+ * Quem paga sempre a horas não precisa de ser lembrado — e um lembrete que não
+ * muda nada é uma mensagem a mais na vida de quem já cumpre. Quem costuma
+ * atrasar é avisado mais cedo, porque é onde o lembrete ainda muda o resultado.
+ *
+ * Sem letra vale o que está configurado: a um cliente que ainda não se conhece
+ * não se tira nem se antecipa nada.
+ *
+ * `null` = não há lembrete antes do vencimento. As restantes etapas do funil
+ * (vencido, aviso, suspensão) não mudam com a classe: essas obedecem ao
+ * contrato, não ao histórico.
+ */
+export function reminderLeadFor(letter: PaymentClass | null, configured: number): number | null {
+  if (letter === null) return configured;
+  if (letter === 'A' || letter === 'B') return null;
+  return letter === 'C' ? 3 : 5;
+}
+
+/** O funil deste cliente: só o lembrete muda, e só na antecedência. */
+export function funnelForClass(base: FunnelStage[], letter: PaymentClass | null, configured: number): FunnelStage[] {
+  const lead = reminderLeadFor(letter, configured);
+  const semLembrete = base.filter((stage) => stage.stage !== 'reminder');
+  if (lead === null) return semLembrete;
+  return [...semLembrete, { stage: 'reminder' as const, threshold: -Math.abs(lead) }]
+    .sort((a, b) => a.threshold - b.threshold);
 }
 
 /** Etapa atual = a de maior threshold <= dias de atraso; null se ainda cedo demais. */
@@ -207,11 +238,19 @@ export async function runOverdueNoticesIfDue(
     approved = result.templates;
   }
   const funnel = loadFunnel();
+  const configuredLead = Math.max(0, -funnel[0].threshold);
+  // A classe de cada cliente, lida uma vez por passagem: decide a antecedência
+  // do lembrete, e nada mais do que isso.
+  const classes = new Map(
+    loadPaymentBehaviour(db).clients.map((client) => [client.clientId, client.letter])
+  );
   const grace = autoSuspensionGraceDays(db);
   const cooldownDays = Number(getSetting('noticeCooldownDays')) || DEFAULT_COOLDOWN_DAYS;
   const companyName = getSetting('companyName') || 'ISPM';
-  // Janela de antecipação = etapa mais cedo do funil (reminder, threshold negativo).
-  const reminderWindow = Math.max(0, -funnel[0].threshold);
+  // Janela de antecipação = a maior antecedência possível, não a configurada:
+  // um cliente de classe D é lembrado 5 dias antes mesmo que a definição diga 2,
+  // e sem esta folga a fatura dele nem chegava a ser candidata.
+  const reminderWindow = Math.max(configuredLead, 5);
 
   const candidates = loadOverdueCandidates(reminderWindow);
 
@@ -241,7 +280,7 @@ export async function runOverdueNoticesIfDue(
 
   for (let i = 0; i < eligible.length; i++) {
     const row = eligible[i];
-    const type = stageFor(funnel, row.daysOverdue);
+    const type = stageFor(funnelForClass(funnel, classes.get(row.clientId) ?? null, configuredLead), row.daysOverdue);
     if (!type) { skipped += 1; continue; }
 
     const alreadySent = recentlyNotified.get(row.paymentId, type, `-${cooldownDays} days`);

@@ -1,6 +1,7 @@
 import { getSqliteDatabase } from '../db/database';
 import { businessDay } from '../../shared/business-day';
 import { loadUpcomingSuspensions } from './auto-suspension';
+import { classDrops } from './payment-behaviour';
 import { pruneNotifications, recordNotification } from './notifications';
 
 /**
@@ -15,7 +16,7 @@ const DAY_KEY = 'notificationsDailyDay';
 
 export type NotificationsDailyRun =
   | { skipped: true; reason: string }
-  | { pruned: number; upcoming: number };
+  | { pruned: number; upcoming: number; drops: number };
 
 export function runNotificationsDailyIfDue(now: Date = new Date()): NotificationsDailyRun {
   const db = getSqliteDatabase();
@@ -40,5 +41,20 @@ export function runNotificationsDailyIfDue(now: Date = new Date()): Notification
       focus: 'overdue'
     });
   }
-  return { pruned, upcoming: upcoming.length };
+  // Quem desceu de classe no último mês. O uid leva o cliente e o mês, para o
+  // mesmo cliente não encher o sino todos os dias com a mesma descida.
+  const drops = classDrops(db, today);
+  for (const drop of drops) {
+    recordNotification(db, {
+      uid: `behaviour:${drop.clientId}:${today.slice(0, 7)}`,
+      kind: 'behaviour_drop',
+      severity: 'warn',
+      title: `${drop.clientName} desceu de ${drop.from} para ${drop.to}`,
+      detail: 'Comportamento de pagamento no último mês.',
+      section: 'finance',
+      focus: 'behaviour'
+    });
+  }
+
+  return { pruned, upcoming: upcoming.length, drops: drops.length };
 }
