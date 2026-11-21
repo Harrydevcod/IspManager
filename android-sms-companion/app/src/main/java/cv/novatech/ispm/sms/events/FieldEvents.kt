@@ -20,6 +20,7 @@ data class FieldEvent(val id: String, val kind: String, val at: Long, val payloa
 
   companion object {
     const val WORK_ORDER_DONE = "work_order_done"
+    const val TICKET_DONE = "ticket_done"
     const val RECEIPT_PROPOSAL = "receipt_proposal"
     const val SMS_IN = "sms_in"
 

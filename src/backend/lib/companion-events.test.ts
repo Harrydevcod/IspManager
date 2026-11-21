@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  for (const table of ['sms_inbox', 'work_order_attachments', 'companion_events', 'service_events', 'work_orders', 'client_credits', 'treasury_movements', 'payment_receipts', 'payment_lines', 'payments', 'services', 'clients', 'app_settings']) {
+  for (const table of ['sms_inbox', 'work_order_attachments', 'companion_events', 'service_events', 'work_orders', 'support_ticket_entries', 'support_tickets', 'client_credits', 'treasury_movements', 'payment_receipts', 'payment_lines', 'payments', 'services', 'clients', 'app_settings']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
   db.prepare(`INSERT INTO app_settings (key, value) VALUES ('smsCompanionEnabled', 'true'), ('smsCompanionBaseUrl', 'http://192.168.1.50:8765')`).run();
@@ -69,6 +69,17 @@ function invoice(c: { clientId: number; serviceId: number }, amount: number, due
     VALUES (?, ?, ?, ?, ?, 'pending', '2026-09-01')
   `).run(c.clientId, c.serviceId, `2026-${String(seq).padStart(2, '0')}`, amount, due).lastInsertRowid as number;
 }
+
+function ticket(c: { clientId: number; serviceId: number }, status = 'aberto') {
+  return db.prepare(`
+    INSERT INTO support_tickets (client_id, service_id, subject, channel, category, priority, status)
+    VALUES (?, ?, 'Sem net desde ontem', 'telefone', 'sem_ligacao', 'media', ?)
+  `).run(c.clientId, c.serviceId, status).lastInsertRowid as number;
+}
+
+const resolved = (id: string, ticketId: number, notes: unknown = 'Reiniciei o CPE'): CompanionEvent => ({
+  id, kind: 'ticket_done', at: '2026-11-05T15:00:00.000Z', payload: { ticketId, notes }
+});
 
 const done = (id: string, workOrderId: number, extra: Record<string, unknown> = {}): CompanionEvent => ({
   id, kind: 'work_order_done', at: '2026-11-05T14:30:00.000Z', payload: { workOrderId, notes: 'Antena trocada', ...extra }
@@ -132,6 +143,42 @@ describe('pullCompanionEventsIfDue', () => {
     const d = deps([]);
     expect(await mod.pullCompanionEventsIfDue(d)).toEqual({ skipped: true });
     expect(d.fetchEvents).not.toHaveBeenCalled();
+  });
+});
+
+describe('o pedido de assistência resolvido no terreno', () => {
+  test('fica resolvido, com a nota do terreno e a mudança de estado no histórico', async () => {
+    const rui = client('Rui', '9955667');
+    const id = ticket(rui);
+    const d = deps([resolved('evt-00000010', id)]);
+
+    expect(await mod.pullCompanionEventsIfDue(d)).toEqual({ pulled: 1, acked: true });
+
+    const row = db.prepare('SELECT status, resolved_at AS resolvedAt FROM support_tickets WHERE id = ?').get(id) as { status: string; resolvedAt: string | null };
+    expect(row.status).toBe('resolvido');
+    expect(row.resolvedAt).not.toBeNull();
+    const entries = db.prepare('SELECT kind, body FROM support_ticket_entries WHERE ticket_id = ? ORDER BY id').all(id);
+    expect(entries).toEqual([
+      { kind: 'mudanca_estado', body: 'Aberto → Resolvido' },
+      { kind: 'nota', body: 'Resolvido no terreno (app móvel) — Reiniciei o CPE' }
+    ]);
+    expect(d.ack).toHaveBeenCalledWith(['evt-00000010']);
+  });
+
+  test('um pedido que não existe é recusado, e o telemóvel fica livre dele', async () => {
+    const d = deps([resolved('evt-00000011', 4242)]);
+    await mod.pullCompanionEventsIfDue(d);
+    expect(db.prepare('SELECT status, reason FROM companion_events WHERE id = ?').get('evt-00000011'))
+      .toEqual({ status: 'rejected', reason: 'Pedido não encontrado' });
+    expect(d.ack).toHaveBeenCalled();
+  });
+
+  test('sem dizer o que se fez não se resolve nada', async () => {
+    const id = ticket(client('Marta', null));
+    await mod.pullCompanionEventsIfDue(deps([resolved('evt-00000012', id, '   ')]));
+    expect(db.prepare('SELECT status, reason FROM companion_events WHERE id = ?').get('evt-00000012'))
+      .toEqual({ status: 'rejected', reason: 'dados do pedido invalidos' });
+    expect(db.prepare('SELECT status FROM support_tickets WHERE id = ?').get(id)).toEqual({ status: 'aberto' });
   });
 });
 
