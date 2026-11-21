@@ -3733,6 +3733,15 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  /* As linhas dos relatórios empilham: três colunas de 140px mais a descrição
+     não cabem, e a linha levava a página inteira atrás dela. */
+  .report-row,
+  .report-row.with-action,
+  .report-row.is-revenue,
+  .report-row.dq-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .payment-summary-button {
     grid-template-columns: minmax(0, 1fr) 112px;
   }
@@ -7831,6 +7840,9 @@ button.danger:disabled {
 .behaviour-report {
   display: grid;
   gap: var(--space-5);
+  /* `minmax(0, 1fr)` e nao `auto`: uma coluna automatica cresce ate ao conteudo
+     mais largo e leva a pagina atras dela em ecra estreito. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .behaviour-report-actions {
@@ -7841,9 +7853,14 @@ button.danger:disabled {
   justify-content: space-between;
 }
 
+/* A linha de resumo encolhe e parte; sem isto empurrava a pagina inteira para
+   fora do ecra em largura estreita, e o botao ia atras dela. */
+
 .behaviour-report-rules {
   color: var(--text-3);
   font-size: var(--fs-xs);
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 /* Em ecrã estreito a tabela rola dentro da sua caixa; a página não. */
@@ -7934,6 +7951,7 @@ button.danger:disabled {
 .client-behaviour {
   display: grid;
   gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .client-behaviour-head {
