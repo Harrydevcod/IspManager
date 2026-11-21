@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { signedFetch } from './sms-outbox';
 import { verifyResponseSignature } from './sms-signing';
 import { balanceSqlExpr, payPayment } from './payments';
+import { updateTicket } from './support-tickets';
 import { completeWorkOrder } from './work-orders';
 
 /**
@@ -50,6 +51,13 @@ const workOrderDone = z.object({
   lat: z.number().min(-90).max(90).optional(),
   lon: z.number().min(-180).max(180).optional(),
   photos: z.array(z.string().regex(/^[A-Za-z0-9-]{8,64}$/)).max(MAX_PHOTOS).default([])
+});
+
+/** Dar um pedido de assistência por resolvido no terreno. Sem fotos: as da OS
+ * vivem em `work_order_attachments`, que exige uma OS. */
+const ticketDone = z.object({
+  ticketId: z.number().int().positive(),
+  notes: z.string().trim().min(1).max(2000)
 });
 
 const receiptProposal = z.object({
@@ -164,6 +172,33 @@ function apply(db: Database.Database, event: CompanionEvent, photos: Buffer[]): 
     });
     return { status: 'applied' };
   }
+  if (event.kind === 'ticket_done') {
+    const p = ticketDone.safeParse(event.payload);
+    if (!p.success) return { status: 'rejected', reason: 'dados do pedido invalidos' };
+    // Um evento pode ficar dias na fila do telemóvel (fora da rede) e chegar
+    // depois de alguém já ter tratado o pedido no PC. Só se resolve o que ainda
+    // está por resolver — como a OS, que também recusa estar já concluída.
+    const open = db.prepare(`
+      SELECT 1 FROM support_tickets WHERE id = ? AND status IN ('aberto', 'em_curso', 'aguarda_cliente')
+    `).get(p.data.ticketId);
+    if (!open) {
+      const exists = db.prepare('SELECT 1 FROM support_tickets WHERE id = ?').get(p.data.ticketId);
+      return { status: 'rejected', reason: exists ? 'Pedido já não estava aberto' : 'Pedido não encontrado' };
+    }
+    // `updateTicket` já exige a nota para resolver, grava a mudança de estado no
+    // histórico do pedido e acerta o `resolved_at`. Sem utilizador: o autor é o
+    // terreno, e o texto da nota di-lo.
+    const done = updateTicket(db, p.data.ticketId, {
+      status: 'resolvido',
+      note: `Resolvido no terreno (app móvel) — ${p.data.notes}`
+    }, null);
+    if (!done.ok) return { status: 'rejected', reason: done.error };
+    recordSystemAuditEntry(db, {
+      action: 'support_ticket.resolved_on_phone', entityType: 'support_ticket', entityId: p.data.ticketId,
+      summary: 'Pedido resolvido no telemovel', metadata: { eventId: event.id }
+    });
+    return { status: 'applied' };
+  }
   if (event.kind === 'receipt_proposal') {
     const p = receiptProposal.safeParse(event.payload);
     if (!p.success) return { status: 'rejected', reason: 'dados do recebimento invalidos' };
@@ -253,10 +288,11 @@ export async function pullCompanionEventsIfDue(deps: CompanionEventsDeps = defau
       if (fetched.some((b) => b === null)) continue;
       photos = fetched as Buffer[];
     }
-    if (storeCompanionEvent(db, event, photos) === 'stored' && event.kind === 'work_order_done') changedWork = true;
+    const isWork = event.kind === 'work_order_done' || event.kind === 'ticket_done';
+    if (storeCompanionEvent(db, event, photos) === 'stored' && isWork) changedWork = true;
     done.push(event.id);
   }
-  // A OS concluída sai já da lista do telemóvel.
+  // A OS concluída, ou o pedido resolvido, sai já da lista do telemóvel.
   if (changedWork) requestCompanionSnapshotPush();
   const acked = done.length ? await deps.ack(done) : false;
   return { pulled: done.length, acked };
