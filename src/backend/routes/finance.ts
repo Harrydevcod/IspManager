@@ -6,6 +6,7 @@ import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
 import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
+import { requestCompanionSnapshotPush } from '../lib/companion-sync';
 import { requestNetworkSync } from '../lib/network-sync';
 import {
   applyClientCreditToPayment,
@@ -700,6 +701,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(result.status).send({ error: result.error });
     }
 
+    // Quem acabou de pagar não fica meia hora na lista de devedores do
+    // telemóvel: o resumo segue no tick seguinte em vez de esperar os 5 minutos.
+    requestCompanionSnapshotPush();
+
     const { receipt, settled, balanceCve, creditAddedCve } = result.value;
     recordAudit(request, {
       action: 'pay',
@@ -980,6 +985,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
     const result = settleInvoices(getSqliteDatabase(), id, { ...parsed.data, userId: request.user?.id ?? null });
     if (!result.ok) return reply.status(result.status).send({ error: result.error });
+    requestCompanionSnapshotPush();
 
     recordAudit(request, {
       action: 'settle_invoices',

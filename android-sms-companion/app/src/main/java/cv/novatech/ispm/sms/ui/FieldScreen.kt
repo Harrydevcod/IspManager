@@ -69,9 +69,10 @@ fun FieldScreen(
     }
   }
   receiving?.let { debtor ->
-    ReceiptSheet(debtor, onDismiss = { receiving = null }) { amount, method, note ->
+    ReceiptSheet(debtor, dashboard?.money?.accounts.orEmpty(), onDismiss = { receiving = null }) { amount, method, note, accountId ->
       val payload = JSONObject().put("clientCode", debtor.clientCode).put("amountCve", amount).put("method", method)
       if (note.isNotBlank()) payload.put("note", note)
+      accountId?.let { payload.put("accountId", it) }
       onFieldEvent(FieldEvent.RECEIPT_PROPOSAL, payload, emptyList())
       receiving = null
     }
