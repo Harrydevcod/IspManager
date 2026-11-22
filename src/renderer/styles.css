@@ -1544,9 +1544,10 @@ h2 {
 }
 
 .field-receipt {
+  --receipt-label-offset: calc(var(--fs-xs) * 1.5 + var(--space-1-5));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) minmax(0, 12rem) auto;
+  align-items: start;
   gap: 16px;
   padding: 10px 12px;
   border-radius: 10px;
@@ -1584,11 +1585,17 @@ h2 {
 .field-receipt-actions {
   display: flex;
   gap: 8px;
+  padding-top: var(--receipt-label-offset);
 }
 
 /* O seletor da conta não leva a linha toda: ao lado do valor chegam 12rem. */
 .field-receipt-account {
   width: min(12rem, 100%);
+}
+
+.field-receipt-account select {
+  min-width: 0;
+  width: 100%;
 }
 
 @media (max-width: 720px) {
@@ -1598,6 +1605,10 @@ h2 {
 
   .field-receipt-amount {
     text-align: left;
+  }
+
+  .field-receipt-actions {
+    padding-top: 0;
   }
 }
 
