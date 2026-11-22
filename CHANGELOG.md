@@ -4,6 +4,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.75](https://github.com/Harrydevcod/IspManager/releases/tag/v2.75.0) — 2026-11-22
+
+### Adicionado
+- **Pedidos resolvidos no terreno.** Na app ISPM SMS 0.14, o técnico pode resolver um pedido de assistência com uma nota; o PC regista a resolução e atualiza o resumo do telemóvel.
+- **Conta nos recebimentos do terreno.** O técnico pode indicar a caixa ou o banco, e quem confirma no PC pode escolher outra conta. O resumo é atualizado quando entra dinheiro.
+
+### Corrigido
+- **Transferências do terreno.** A confirmação no PC passa a pedir um banco de destino, evitando que a proposta fique pendente por falta de conta.
+- **Pedidos já fechados.** Uma resolução antiga enviada pelo telemóvel não altera um pedido entretanto fechado no PC.
+
+### Removido
+- **Canal antigo de respostas SMS.** A tabela e as rotas sem utilização foram retiradas; a atualização preserva bases que ainda contenham mensagens e interrompe a migração para tratamento dos dados.
+
 ## [2.74](https://github.com/Harrydevcod/IspManager/releases/tag/v2.74.0) — 2026-11-19
 
 ### Adicionado
