@@ -38,7 +38,7 @@ class FieldEventCodecTest {
   }
 
   @Test fun desktopPullIsCapped() {
-    val many = (1..80).map { FieldEvent("evt-${it.toString().padStart(8, '0')}", FieldEvent.SMS_IN, it.toLong(), "{}") }
+    val many = (1..80).map { FieldEvent("evt-${it.toString().padStart(8, '0')}", FieldEvent.TICKET_DONE, it.toLong(), "{}") }
     assertEquals(FieldEventCodec.PULL_LIMIT, FieldEventCodec.forDesktop(many).getJSONArray("events").length())
   }
 

@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  for (const table of ['sms_inbox', 'work_order_attachments', 'companion_events', 'service_events', 'work_orders', 'support_ticket_entries', 'support_tickets', 'client_credits', 'treasury_movements', 'payment_receipts', 'payment_lines', 'payments', 'services', 'clients', 'app_settings']) {
+  for (const table of ['work_order_attachments', 'companion_events', 'service_events', 'work_orders', 'support_ticket_entries', 'support_tickets', 'client_credits', 'treasury_movements', 'payment_receipts', 'payment_lines', 'payments', 'services', 'clients', 'app_settings']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
   // Os bancos são dos testes; a caixa predefinida vem das migrações e fica.
@@ -132,12 +132,14 @@ describe('pullCompanionEventsIfDue', () => {
     expect(d.ack).toHaveBeenCalled();
   });
 
-  test('an SMS reply lands in the inbox, linked to the client by the last 7 digits', async () => {
-    const ana = client('Ana', '991 22 33');
-    await mod.pullCompanionEventsIfDue(deps([
+  test('an obsolete SMS event is rejected and acknowledged', async () => {
+    const d = deps([
       { id: 'evt-00000005', kind: 'sms_in', at: '2026-11-05T10:00:00.000Z', payload: { from: '+2389912233', body: 'Ja paguei ontem' } }
-    ]));
-    expect(db.prepare('SELECT client_id AS c, phone, body FROM sms_inbox').get()).toEqual({ c: ana.clientId, phone: '+2389912233', body: 'Ja paguei ontem' });
+    ]);
+    await mod.pullCompanionEventsIfDue(d);
+    expect(db.prepare('SELECT status, reason FROM companion_events WHERE id = ?').get('evt-00000005'))
+      .toEqual({ status: 'rejected', reason: 'tipo desconhecido: sms_in' });
+    expect(d.ack).toHaveBeenCalledWith(['evt-00000005']);
   });
 
   test('nothing happens while the phone is not paired', async () => {

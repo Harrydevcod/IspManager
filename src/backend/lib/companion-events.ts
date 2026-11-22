@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { normalizeSmsPhone } from '../../shared/sms';
 import { recordSystemAuditEntry } from './audit';
 import { requestCompanionSnapshotPush } from './companion-sync';
 import { companionUserId, markNotificationReadByUid, markNotificationsSeen, recordNotification } from './notifications';
@@ -67,11 +66,6 @@ const receiptProposal = z.object({
   note: z.string().trim().max(500).optional(),
   /** A caixa ou o banco que o terreno indicou; o operador pode trocá-la ao confirmar. */
   accountId: z.number().int().positive().optional()
-});
-
-const smsIn = z.object({
-  from: z.string().trim().min(3).max(32),
-  body: z.string().max(1600)
 });
 
 /** O sino do telemóvel: o que lá nasce, o que lá se lê e quando lá se abriu o painel. */
@@ -143,17 +137,6 @@ const defaultDeps: CompanionEventsDeps = { fetchEvents: defaultFetchEvents, fetc
 
 type Outcome = { status: 'pending' | 'applied' | 'rejected'; reason?: string };
 
-/** Telefones de CV comparam-se pelos últimos 7 dígitos, como na app. */
-function findClientIdByPhone(db: Database.Database, phone: string): number | null {
-  const key = normalizeSmsPhone(phone).replace(/\D/g, '').slice(-7);
-  if (key.length !== 7) return null;
-  const rows = db.prepare(`
-    SELECT id FROM clients
-    WHERE substr(replace(replace(replace(replace(phone, ' ', ''), '-', ''), '+', ''), '.', ''), -7) = ?
-  `).all(key) as Array<{ id: number }>;
-  return rows.length === 1 ? rows[0].id : null;
-}
-
 function apply(db: Database.Database, event: CompanionEvent, photos: Buffer[]): Outcome {
   if (event.kind === 'work_order_done') {
     const p = workOrderDone.safeParse(event.payload);
@@ -207,14 +190,6 @@ function apply(db: Database.Database, event: CompanionEvent, photos: Buffer[]): 
     const client = db.prepare('SELECT id FROM clients WHERE client_code = ?').get(p.data.clientCode);
     // Fica à espera do operador: nenhum escudo entra na caixa sem confirmação no desktop.
     return client ? { status: 'pending' } : { status: 'rejected', reason: 'cliente inexistente' };
-  }
-  if (event.kind === 'sms_in') {
-    const p = smsIn.safeParse(event.payload);
-    if (!p.success) return { status: 'rejected', reason: 'SMS invalido' };
-    db.prepare(`
-      INSERT INTO sms_inbox (event_id, client_id, phone, body, received_at) VALUES (?, ?, ?, ?, ?)
-    `).run(event.id, findClientIdByPhone(db, p.data.from), normalizeSmsPhone(p.data.from) || p.data.from, p.data.body, event.at);
-    return { status: 'applied' };
   }
   if (event.kind === 'notification_new') {
     const p = notificationNew.safeParse(event.payload);

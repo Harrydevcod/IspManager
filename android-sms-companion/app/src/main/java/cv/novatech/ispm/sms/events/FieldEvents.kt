@@ -22,7 +22,6 @@ data class FieldEvent(val id: String, val kind: String, val at: Long, val payloa
     const val WORK_ORDER_DONE = "work_order_done"
     const val TICKET_DONE = "ticket_done"
     const val RECEIPT_PROPOSAL = "receipt_proposal"
-    const val SMS_IN = "sms_in"
 
     /** O sino: o que nasce aqui, o que aqui se lê, e quando aqui se abriu o painel. */
     const val NOTIFICATION_NEW = "notification_new"
