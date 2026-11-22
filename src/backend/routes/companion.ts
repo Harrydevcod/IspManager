@@ -14,7 +14,7 @@ function actor(request: unknown) {
 
 /**
  * O que chega da app móvel e precisa do desktop: recebimentos em mão por
- * confirmar, anexos das OS concluídas no terreno e SMS recebidos dos clientes.
+ * confirmar e anexos das OS concluídas no terreno.
  */
 export async function registerCompanionRoutes(app: FastifyInstance) {
   const billing = { preHandler: requireRole(['admin', 'operator']) };
@@ -59,25 +59,4 @@ export async function registerCompanionRoutes(app: FastifyInstance) {
     return reply.header('content-type', row.mime).header('cache-control', 'private, max-age=86400').send(row.data);
   });
 
-  app.get('/api/sms/inbox', billing, async (request) => {
-    const query = z.object({ clientId: z.coerce.number().int().positive().optional() }).safeParse(request.query ?? {});
-    const clientId = query.success ? query.data.clientId : undefined;
-    const db = getSqliteDatabase();
-    const rows = db.prepare(`
-      SELECT i.id, i.client_id AS clientId, c.full_name AS clientName, i.phone, i.body, i.received_at AS receivedAt, i.read_at AS readAt
-      FROM sms_inbox i LEFT JOIN clients c ON c.id = i.client_id
-      ${clientId ? 'WHERE i.client_id = ?' : ''}
-      ORDER BY i.received_at DESC LIMIT 200
-    `).all(...(clientId ? [clientId] : []));
-    const unread = (db.prepare('SELECT COUNT(*) AS n FROM sms_inbox WHERE read_at IS NULL').get() as { n: number }).n;
-    return { unread, messages: rows };
-  });
-
-  app.post('/api/sms/inbox/read', billing, async (request, reply) => {
-    const body = z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }).safeParse(request.body ?? {});
-    if (!body.success) return reply.status(400).send({ error: 'Pedido invalido' });
-    const mark = getSqliteDatabase().prepare(`UPDATE sms_inbox SET read_at = datetime('now') WHERE id = ? AND read_at IS NULL`);
-    getSqliteDatabase().transaction(() => body.data.ids.forEach((id) => mark.run(id)))();
-    return { ok: true };
-  });
 }

@@ -709,16 +709,6 @@ export const workOrderAttachments = sqliteTable('work_order_attachments', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
-export const smsInbox = sqliteTable('sms_inbox', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  eventId: text('event_id').notNull(),
-  clientId: integer('client_id'),
-  phone: text('phone').notNull(),
-  body: text('body').notNull(),
-  receivedAt: text('received_at').notNull(),
-  readAt: text('read_at')
-});
-
 export const smsCompanionPairing = sqliteTable('sms_companion_pairing', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   deviceName: text('device_name'),
