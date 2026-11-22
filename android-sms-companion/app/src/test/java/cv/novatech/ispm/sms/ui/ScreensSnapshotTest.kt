@@ -17,6 +17,7 @@ import androidx.core.app.ActivityOptionsCompat
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import cv.novatech.ispm.sms.dashboard.Dashboard
+import cv.novatech.ispm.sms.events.FieldEvent
 import cv.novatech.ispm.sms.state.CompanionUiState
 import cv.novatech.ispm.sms.state.PairingCode
 import cv.novatech.ispm.sms.state.RequestUi
@@ -174,6 +175,20 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
         )
       }
     }
+  }
+
+  /**
+   * O Terreno com trabalho já feito à espera do PC: a OS concluída e o pedido de
+   * assistência resolvido. Os botões que os fecham vivem na linha aberta, e uma
+   * captura não dá toques — vêem-se no telemóvel.
+   */
+  @Test fun terreno() {
+    val feito = listOf(
+      FieldEvent("11111111-aaaa", FieldEvent.WORK_ORDER_DONE, now, """{"workOrderId":4,"notes":"Antena trocada"}"""),
+      FieldEvent("22222222-bbbb", FieldEvent.TICKET_DONE, now, """{"ticketId":9,"notes":"Reiniciei o CPE"}""")
+    )
+    shot("terreno") { FieldScreen(dashboard, now - 2 * 60_000, {}) }
+    shot("terreno-a-espera-do-pc") { FieldScreen(dashboard, now - 2 * 60_000, {}, feito) }
   }
 
   @Test fun painel() {

@@ -114,6 +114,36 @@ fun CompleteOrderSheet(
 }
 
 /**
+ * Dar um pedido de assistência por resolvido, com a nota do que se fez — a mesma
+ * que o PC exige para resolver. Sem fotos: no PC as fotos pendem de uma OS, e um
+ * pedido não é uma OS.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ResolveTicketSheet(
+  ticket: Dashboard.Ticket,
+  onDismiss: () -> Unit,
+  onSubmit: (notes: String) -> Unit
+) {
+  var notes by remember { mutableStateOf("") }
+
+  ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Resolver pedido", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+      Text("${ticket.subject} · ${ticket.clientName}", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+      OutlinedTextField(
+        value = notes, onValueChange = { notes = it.take(2000) },
+        label = { Text("O que foi feito") }, minLines = 3, modifier = Modifier.fillMaxWidth()
+      )
+      IspmButton(
+        "Resolver e enviar ao PC", onClick = { onSubmit(notes.trim()) },
+        modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.PRIMARY, enabled = notes.isNotBlank()
+      )
+    }
+  }
+}
+
+/**
  * Recebi em mão: fica como proposta no PC. Nada entra na caixa até o operador
  * confirmar lá, por isso aqui não há recibo nem número.
  */

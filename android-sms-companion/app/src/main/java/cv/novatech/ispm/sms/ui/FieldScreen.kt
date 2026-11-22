@@ -43,12 +43,16 @@ fun FieldScreen(
   val closedOrders = remember(pendingEvents) {
     pendingEvents.filter { it.kind == FieldEvent.WORK_ORDER_DONE }.map { it.payload.optLong("workOrderId") }.toSet()
   }
+  val resolvedTickets = remember(pendingEvents) {
+    pendingEvents.filter { it.kind == FieldEvent.TICKET_DONE }.map { it.payload.optLong("ticketId") }.toSet()
+  }
   val receivedFrom = remember(pendingEvents) {
     pendingEvents.filter { it.kind == FieldEvent.RECEIPT_PROPOSAL }
       .groupBy { it.payload.optString("clientCode") }
       .mapValues { (_, es) -> es.sumOf { it.payload.optLong("amountCve") } }
   }
   var completing by remember { mutableStateOf<Dashboard.WorkOrder?>(null) }
+  var resolving by remember { mutableStateOf<Dashboard.Ticket?>(null) }
   var receiving by remember { mutableStateOf<Dashboard.Debtor?>(null) }
   completing?.let { order ->
     CompleteOrderSheet(order, onDismiss = { completing = null }) { notes, photos, location ->
@@ -56,6 +60,12 @@ fun FieldScreen(
       location?.let { (lat, lon) -> payload.put("lat", lat).put("lon", lon) }
       onFieldEvent(FieldEvent.WORK_ORDER_DONE, payload, photos)
       completing = null
+    }
+  }
+  resolving?.let { ticket ->
+    ResolveTicketSheet(ticket, onDismiss = { resolving = null }) { notes ->
+      onFieldEvent(FieldEvent.TICKET_DONE, JSONObject().put("ticketId", ticket.id).put("notes", notes), emptyList())
+      resolving = null
     }
   }
   receiving?.let { debtor ->
@@ -106,7 +116,9 @@ fun FieldScreen(
         }
         item { Heading("Assistência", dashboard.work.tickets.size) }
         if (dashboard.work.tickets.isEmpty()) item { Note("Sem pedidos abertos.") }
-        items(dashboard.work.tickets, key = { "t:${it.id}" }) { TicketRow(it, onOpen) }
+        items(dashboard.work.tickets, key = { "t:${it.id}" }) {
+          TicketRow(it, onOpen, resolved = it.id in resolvedTickets, onResolve = { resolving = it })
+        }
       }
     }
   }
@@ -238,7 +250,7 @@ private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit, closed: B
 }
 
 @Composable
-private fun TicketRow(t: Dashboard.Ticket, onOpen: (String) -> Unit) = Expandable(
+private fun TicketRow(t: Dashboard.Ticket, onOpen: (String) -> Unit, resolved: Boolean, onResolve: () -> Unit) = Expandable(
   header = {
     Row(verticalAlignment = Alignment.CenterVertically) {
       PriorityDot(t.priority)
@@ -246,10 +258,17 @@ private fun TicketRow(t: Dashboard.Ticket, onOpen: (String) -> Unit) = Expandabl
       Column(Modifier.weight(1f)) {
         Text(t.subject, color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(t.clientName, color = TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (resolved) Text("Resolvido · à espera do PC", color = Success, style = MaterialTheme.typography.bodySmall)
       }
     }
   },
-  actions = { ContactActions(t.phone, onOpen) }
+  actions = {
+    ContactActions(t.phone, onOpen)
+    if (!resolved) {
+      Spacer(Modifier.height(8.dp))
+      Action("Resolver pedido", Modifier.fillMaxWidth(), onResolve)
+    }
+  }
 )
 
 @Composable

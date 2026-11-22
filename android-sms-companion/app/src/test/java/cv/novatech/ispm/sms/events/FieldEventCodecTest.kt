@@ -17,6 +17,15 @@ class FieldEventCodecTest {
     assertTrue(back[1].payload.similar(cash.payload))
   }
 
+  /** O pedido resolvido no terreno viaja com o id e a nota, e nada mais. */
+  @Test fun resolvedTicketTravelsWithItsNote() {
+    val ticket = FieldEvent("33333333-cccc", FieldEvent.TICKET_DONE, 3_000L, """{"ticketId":9,"notes":"Reiniciei o CPE"}""")
+    val event = FieldEventCodec.forDesktop(listOf(ticket)).getJSONArray("events").getJSONObject(0)
+    assertEquals("ticket_done", event.getString("kind"))
+    assertEquals(9, event.getJSONObject("payload").getInt("ticketId"))
+    assertEquals("Reiniciei o CPE", event.getJSONObject("payload").getString("notes"))
+  }
+
   @Test fun brokenStorageIsAnEmptyQueueNotACrash() {
     assertTrue(FieldEventCodec.decode("not json").isEmpty())
   }
