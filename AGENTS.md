@@ -12,6 +12,12 @@ Use the default five labels from `docs/agents/triage-labels.md`.
 
 This repo uses a single-context layout. Read `CONTEXT.md` at the repo root if it exists, plus `docs/adr/` for architectural decisions. See `docs/agents/domain.md`.
 
+## Alinhamento visual — regra obrigatória
+
+- Em formulários, filtros e linhas paralelas, alinhar os controlos e botões pela mesma linha horizontal e manter as colunas correspondentes alinhadas entre linhas.
+- Rótulos, mensagens de erro e textos de apoio não devem deslocar os controlos ou ações vizinhos; em larguras estreitas, empilhar de forma deliberada, sem desalinhamento nem transbordo.
+- Verificar o alinhamento visual nas larguras de 1225 px e 420 px, incluindo rótulos compridos e mensagens de erro quando aplicáveis.
+
 ## Release
 
 Nenhuma release sai sem um **smoke visual** de cada ecrã que ela muda. A release e a tag só se criam depois dele.
