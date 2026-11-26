@@ -19,6 +19,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import android.widget.Toast
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -58,7 +59,13 @@ class MobileErpActivity : Activity() {
     }
     web.webViewClient = object : WebViewClient() {
       override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        return !MobileAssetPolicy.allows(request.url.toString())
+        val url = request.url.toString()
+        if (MobileAssetPolicy.allows(url)) return false
+        if (MobileAssetPolicy.allows(view.url.orEmpty()) && MobileExternalLinkPolicy.allows(url, request.isForMainFrame, request.hasGesture())) {
+          try { startActivity(Intent(Intent.ACTION_VIEW, request.url).addCategory(Intent.CATEGORY_BROWSABLE)) }
+          catch (_: Exception) { Toast.makeText(this@MobileErpActivity, "Não foi possível abrir a ligação.", Toast.LENGTH_LONG).show() }
+        }
+        return true
       }
       override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
         val uri = request.url
