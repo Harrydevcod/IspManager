@@ -7154,16 +7154,9 @@ button.danger:disabled {
 .sms-relay-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); width: 100%; text-align: start; }
 .sms-relay-fields .field { flex: 0 1 20rem; min-width: 0; }
 
-.mobile-access-panel { container-type: inline-size; margin-block: var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--r2); }
-.mobile-access-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.mobile-access-heading h3 { margin: 0; }
-.mobile-access-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: end; gap: var(--space-3); margin-top: var(--space-4); }
-.mobile-access-fields .field { min-width: 0; }
-.mobile-access-active { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); }
-@container (max-width: 340px) {
-  .mobile-access-fields { grid-template-columns: minmax(0, 1fr); }
-  .mobile-access-active { flex-wrap: wrap; }
-}
+.mobile-access-fields .field:nth-child(2) { flex-basis: 8rem; }
+/* Empilhados, os três campos ocupam a mesma coluna. */
+@media (max-width: 640px) { .mobile-access-fields .field:nth-child(2) { flex-basis: 20rem; } }
 @container (min-width: 700px) {
   .mobile-access-fields { grid-template-columns: minmax(0, 1fr) minmax(6rem, .45fr) minmax(0, 1fr) auto; }
 }

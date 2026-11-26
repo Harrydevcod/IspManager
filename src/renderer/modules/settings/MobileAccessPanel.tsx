@@ -61,25 +61,28 @@ export function MobileAccessPanel() {
   }
 
   return (
-    <section className="mobile-access-panel" aria-labelledby="mobile-access-title">
-      <div className="mobile-access-heading">
-        <h3 id="mobile-access-title">ISPM no telemóvel</h3>
-        <span className="sms-pairing-state" data-tone={status?.running ? 'success' : 'muted'} role="status">{status ? status.running ? 'Ativo' : 'Desligado' : 'A verificar…'}</span>
-      </div>
-      {status?.running ? (
-        <div className="mobile-access-active"><span>{status.host}:{status.port}</span><Button variant="secondary" loading={busy} onClick={() => void change(false)}>Desligar acesso</Button></div>
-      ) : status && (
-        <div className="mobile-access-fields">
+    <div className="settings-test-whatsapp sms-relay-panel mobile-access-panel" role="group" aria-label="ISPM no telemóvel">
+      <span className="sms-pairing-state" data-tone={status?.running ? 'success' : undefined} role="status">
+        {!status ? 'A verificar o ISPM no telemóvel…' : status.running ? `ISPM no telemóvel ativo em ${status.host}:${status.port}` : 'ISPM no telemóvel desligado'}
+      </span>
+      {status && !status.running && (
+        <div className="sms-relay-fields mobile-access-fields">
           <Select label="Rede do computador" value={address} onChange={event => setAddress(event.target.value)} disabled={busy || status.addresses.length === 0}>
             <option value="">{status.addresses.length === 0 ? 'Sem rede disponível' : 'Escolha a rede'}</option>
             {status.addresses.map(value => <option key={value} value={value}>{value}</option>)}
           </Select>
           <Field label="Porta" inputMode="numeric" value={port} onChange={event => setPort(event.target.value)} onKeyDown={preventFormSubmit} disabled={busy} />
           <Field label="Password de administrador" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} onKeyDown={preventFormSubmit} disabled={busy} />
-          <Button loading={busy} disabled={!address || !password} onClick={() => void change(true)}>Ativar acesso</Button>
         </div>
       )}
       {error && <Message tone="error">{error}</Message>}
-    </section>
+      {status && (
+        <div className="sms-pairing-actions">
+          {status.running
+            ? <Button variant="secondary" loading={busy} onClick={() => void change(false)}>Desligar acesso</Button>
+            : <Button variant="primary" loading={busy} disabled={!address || !password} onClick={() => void change(true)}>Ativar acesso</Button>}
+        </div>
+      )}
+    </div>
   );
 }

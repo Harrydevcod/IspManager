@@ -30,10 +30,10 @@ test('ativa com password e permite desligar o acesso', async () => {
   const start = calls.find(call => call.url.endsWith('/start'))!;
   expect(JSON.parse(String(start.init?.body))).toEqual({host:'192.168.1.4', port:38421, confirmPassword:'secret'});
   expect(host.querySelector('input[type="password"]')).toBeNull();
-  expect(host.textContent).toContain('Ativo');
+  expect(host.textContent).toContain('ISPM no telemóvel ativo em');
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Desligar'))!.click());
   expect(calls.some(call => call.url.endsWith('/stop'))).toBe(true);
-  expect(host.textContent).toContain('Desligado');
+  expect(host.textContent).toContain('ISPM no telemóvel desligado');
   expect((host.querySelector('input[type="password"]') as HTMLInputElement).value).toBe('');
   await act(async () => root.unmount());
   host.remove();
