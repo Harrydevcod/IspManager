@@ -31,4 +31,9 @@ describe('mobile device proof over the paired LAN', () => {
     expect(proof.body.toString()).toBe('{"ok":true}');
     expect(proof.signature).toBe('ack');
   });
+
+  it('identifies desktop identity conflicts so the user can pair again', async () => {
+    fetchMock.mockResolvedValue(new Response('', {status:409}));
+    await expect(sendDesktopIdentity('http://192.168.1.20:8765', 'nonce', {host:'192.168.1.10', port:38421, certificatePem:'cert'})).rejects.toThrow('MOBILE_DESKTOP_IDENTITY_CONFLICT');
+  });
 });

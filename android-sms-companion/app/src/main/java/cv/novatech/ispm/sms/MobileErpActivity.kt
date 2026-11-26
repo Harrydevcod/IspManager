@@ -28,6 +28,7 @@ import java.io.ByteArrayInputStream
 class MobileErpActivity : Activity() {
   private var view: WebView? = null
   private var dispatcher: MobileBridgeDispatcher? = null
+  private var httpClient: MobileHttpClient? = null
   private var fileCallback: ValueCallback<Array<Uri>>? = null
   private var allowMultipleFiles = false
   private var stoppedAt: Long? = null
@@ -81,7 +82,9 @@ class MobileErpActivity : Activity() {
         }
       }
     }
-    val native = MobileBridgeHandler(app.pairingStore.mobileHttpClient()::execute)
+    val client = app.pairingStore.mobileHttpClient()
+    httpClient = client
+    val native = MobileBridgeHandler(client::execute)
     val main = Handler(Looper.getMainLooper())
     val dispatch = MobileBridgeDispatcher(maxRequests = 4, process = native::handle) { runnable -> main.post(runnable) }
     dispatcher = dispatch
@@ -136,6 +139,8 @@ class MobileErpActivity : Activity() {
     fileCallback = null
     dispatcher?.close()
     dispatcher = null
+    httpClient?.close()
+    httpClient = null
     view?.apply { stopLoading(); loadUrl("about:blank"); destroy() }
     view = null
     super.onDestroy()

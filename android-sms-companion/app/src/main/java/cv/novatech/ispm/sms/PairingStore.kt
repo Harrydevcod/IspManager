@@ -89,7 +89,7 @@ class PairingStore(context: Context) : CompanionPairing {
     MobileTlsConnection({ desktopIdentity() }, { mobileTlsKeyManager() })
 
   internal fun mobileHttpClient(): MobileHttpClient =
-    MobileHttpClient({ desktopIdentity() }, { mobileTlsKeyManager() })
+    MobileHttpClient({ desktopIdentity() }, { mobileTlsKeyManager() }, currentPairing = { synchronized(this) { "${version()}:${secret()}" } })
 
   private fun key(): SecretKey {
     val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

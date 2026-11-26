@@ -39,5 +39,10 @@ export async function requestMobileDeviceProof(baseUrl: string, nonce: string): 
 
 export async function sendDesktopIdentity(baseUrl: string, nonce: string, identity: {host: string; port: number; certificatePem: string}): Promise<{body: Buffer; signature: string | null}> {
   if (!baseUrl) throw new Error('MOBILE_DEVICE_PROOF_UNAVAILABLE');
-  return readProof(await signedFetch('/mobile/desktop-identity', 'POST', identity, 5000, baseUrl, nonce));
+  const response = await signedFetch('/mobile/desktop-identity', 'POST', identity, 5000, baseUrl, nonce);
+  if (response.status === 409) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error('MOBILE_DESKTOP_IDENTITY_CONFLICT');
+  }
+  return readProof(response);
 }

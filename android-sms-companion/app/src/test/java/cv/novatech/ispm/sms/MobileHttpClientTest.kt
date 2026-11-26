@@ -18,7 +18,7 @@ class MobileHttpClientTest {
   @Test fun reusesConnectionForTheSameIdentity() {
     val password = "test-only".toCharArray()
     val store = KeyStore.getInstance("PKCS12").apply {
-      requireNotNull(javaClass.getResourceAsStream("/mobile-identity/test-desktop.p12")).use { load(it, password) }
+      requireNotNull(MobileHttpClientTest::class.java.getResourceAsStream("/mobile-identity/test-desktop.p12")).use { load(it, password) }
     }
     val cert = store.getCertificate("test-desktop") as X509Certificate
     val key = store.getKey("test-desktop", password) as PrivateKey

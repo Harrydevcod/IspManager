@@ -34,8 +34,11 @@ export async function registerMobileAccessRoutes(app: FastifyInstance) {
       const address = await lifecycle.start(parsed.data.host, parsed.data.port);
       recordAudit(request, {action:'mobile_access_started', entityType:'mobile_access', metadata:address});
       return {running:true, ...address};
-    } catch {
-      return reply.status(409).send({error:'Não foi possível ativar o acesso móvel. Verifique o pareamento e a rede.'});
+    } catch (error) {
+      const message = error instanceof Error && error.message === 'MOBILE_DESKTOP_IDENTITY_CONFLICT'
+        ? 'A identidade do computador mudou. Volte a parear o telemóvel antes de ativar o acesso móvel.'
+        : 'Não foi possível ativar o acesso móvel. Verifique o pareamento e a rede.';
+      return reply.status(409).send({error: message});
     }
   });
 
