@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { authFetch } from './auth';
+import { MOBILE_ORIGIN } from './mobileBootstrap';
 
 /**
  * Authenticated downloads & inline previews — without ever putting the auth
@@ -46,6 +47,7 @@ async function responseError(response: Response): Promise<string> {
  * no `blob:` + `<a download>` habitual.
  */
 export async function downloadAuthenticated(url: string, fallbackName: string, init?: RequestInit): Promise<DownloadResult> {
+  if (window.location?.origin === MOBILE_ORIGIN) throw new Error('Guardar ficheiros ainda não está disponível no telemóvel');
   const response = await authFetch(url, init);
   if (!response.ok) throw new Error(await responseError(response));
   const blob = await response.blob();
@@ -77,6 +79,7 @@ export async function downloadAuthenticated(url: string, fallbackName: string, i
 
 /** Fetches `url` with auth and prints it without exposing the token in a URL. */
 export async function printAuthenticated(url: string, init?: RequestInit): Promise<PrintResult> {
+  if (window.location?.origin === MOBILE_ORIGIN) throw new Error('Imprimir ainda não está disponível no telemóvel');
   const response = await authFetch(url, init);
   if (!response.ok) throw new Error(await responseError(response));
   const blob = await response.blob();

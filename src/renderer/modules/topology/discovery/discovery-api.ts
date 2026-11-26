@@ -1,6 +1,7 @@
+import { apiUrl } from '../../../lib/api';
 import { authFetch } from '../../../lib/auth';
 
-const API_BASE = 'http://127.0.0.1:3001';
+const API_BASE = apiUrl('');
 
 export type DiscoveryFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 

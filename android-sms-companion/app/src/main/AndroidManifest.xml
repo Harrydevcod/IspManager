@@ -41,6 +41,10 @@
       </intent-filter>
     </activity>
     <activity
+      android:name=".MobileErpActivity"
+      android:exported="false"
+      android:screenOrientation="portrait" />
+    <activity
       android:name=".PortraitCaptureActivity"
       android:screenOrientation="portrait"
       android:stateNotNeeded="true"

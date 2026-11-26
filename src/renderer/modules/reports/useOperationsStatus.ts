@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { authFetch } from '../../lib/auth';
 import type { OperationsStatus } from '../../../shared/operations-status';
@@ -41,7 +42,7 @@ export function useOperationsStatus(active: boolean): OperationsStatusState {
     inFlight.current = controller;
     setLoading(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/reports/operations', {
+      const response = await authFetch(apiUrl('/api/reports/operations'), {
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import type {
   AssignmentListQuery,
   BackboneAssignmentSummary,
@@ -10,7 +11,7 @@ import type {
 import type { TopologyLinkProperties } from '../../../shared/topology';
 import { authFetch } from '../../lib/auth';
 
-const API_BASE = 'http://127.0.0.1:3001';
+const API_BASE = apiUrl('');
 
 export type BackboneFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 

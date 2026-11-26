@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -124,7 +125,7 @@ export function WorkOrdersModule() {
   const [dragOverStatus, setDragOverStatus] = useState<WorkOrderStatus | null>(null);
 
   function loadBoard() {
-    return authFetch('http://127.0.0.1:3001/api/work-orders/board')
+    return authFetch(apiUrl('/api/work-orders/board'))
       .then((res) => res.json() as Promise<WorkOrderBoard>)
       .then((data) => { setBoard(data); setLoadError(null); })
       .catch(() => { setBoard(null); setLoadError('Não foi possível carregar as ordens de trabalho.'); });
@@ -132,7 +133,7 @@ export function WorkOrdersModule() {
 
   function ensureServicesLoaded() {
     if (services.length > 0) return Promise.resolve();
-    return authFetch('http://127.0.0.1:3001/api/services')
+    return authFetch(apiUrl('/api/services'))
       .then((res) => res.json() as Promise<ServiceRow[]>)
       .then(setServices)
       .catch(() => setServices([]));
@@ -187,8 +188,8 @@ export function WorkOrdersModule() {
       }
 
       const url = editing
-        ? `http://127.0.0.1:3001/api/work-orders/${editing.id}`
-        : 'http://127.0.0.1:3001/api/work-orders';
+        ? apiUrl(`/api/work-orders/${editing.id}`)
+        : apiUrl('/api/work-orders');
       const response = await authFetch(url, {
         method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -216,7 +217,7 @@ export function WorkOrdersModule() {
       tone: 'danger',
       confirmLabel: 'Eliminar'
     }))) return;
-    const response = await authFetch(`http://127.0.0.1:3001/api/work-orders/${order.id}`, {
+    const response = await authFetch(apiUrl(`/api/work-orders/${order.id}`), {
       method: 'DELETE'
     });
     if (!response.ok) {
@@ -234,7 +235,7 @@ export function WorkOrdersModule() {
       toast('Define o tipo de evento antes de concluir (Editar a OS).', 'info');
       return;
     }
-    const response = await authFetch(`http://127.0.0.1:3001/api/work-orders/${order.id}`, {
+    const response = await authFetch(apiUrl(`/api/work-orders/${order.id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })

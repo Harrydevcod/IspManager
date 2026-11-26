@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, ErrorRetry, SkeletonList } from '../../components';
@@ -15,7 +16,7 @@ import type { ClientBehaviour, PaymentBehaviourReport, PortfolioPoint } from '..
  * seu CSV e não acrescenta um ramo ao `if` já comprido do `ReportsModule`.
  */
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 
 type Dados = { report: PaymentBehaviourReport; months: PortfolioPoint[] };
 

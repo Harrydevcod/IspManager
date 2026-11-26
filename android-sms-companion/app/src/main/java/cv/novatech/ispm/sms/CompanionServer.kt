@@ -19,8 +19,8 @@ import kotlin.math.abs
  * MUST match the desktop's `createSmsSignature` (method\npath\ntimestamp\nnonce\nbody).
  */
 class CompanionServer(
-  private val pairingStore: PairingStore,
-  private val requestStore: SmsRequestStore,
+  private val pairingStore: CompanionPairing,
+  private val requestStore: CompanionRequests,
   port: Int = 8765,
   private val nonces: NonceCache = NonceCache(),
   private val onRequestsChanged: (SmsRequest) -> Unit = {},
@@ -36,6 +36,8 @@ class CompanionServer(
   private val pendingPairing: () -> PendingPairing? = { null },
   /** The PC proved it derived the same secret: store it. */
   private val onPairConfirmed: (PendingPairing) -> Unit = {},
+  /** A non-exportable identity for the paired phone, created only on LAN request. */
+  private val mobileCertificate: (String) -> String? = { null },
   /** Shown on the PC next to the confirmation code. */
   private val model: String = "Telemóvel"
 ) : NanoHTTPD(port) {
@@ -53,11 +55,48 @@ class CompanionServer(
     }
     // Pairing runs before the normal check: the phone has no shared secret yet.
     if (session.uri.startsWith("/pair/")) return pairRoute(session, body)
-    if (!verify(session, body, pairingStore.secret())) {
+    val verifiedSecret = pairingStore.secret()
+    if (!verify(session, body, verifiedSecret)) {
       if (session.headers.containsKey("x-ispm-signature")) onRejected()
       return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
     }
     lastLanAt = System.currentTimeMillis()
+    if (session.uri == MobileIdentityRules.CERTIFICATE_PATH) {
+      if (!MobileIdentityRules.allowProof(true, session.method.name, session.uri, pairingStore.version())) {
+        return json(Response.Status.FORBIDDEN, JSONObject().put("error", "prova indisponivel"))
+      }
+      val certificate = runCatching { mobileCertificate(verifiedSecret) }.getOrNull()
+        ?: return json(Response.Status.INTERNAL_ERROR, JSONObject().put("error", "identidade indisponivel"))
+      if (pairingStore.version() != 2 || pairingStore.secret() != verifiedSecret) {
+        return json(Response.Status.CONFLICT, JSONObject().put("error", "pareamento alterado"))
+      }
+      onAuthenticated()
+      val bytes = JSONObject().put("certificatePem", certificate).toString().toByteArray(Charsets.UTF_8)
+      return signed(session.headers["x-ispm-nonce"].orEmpty(), "application/json", bytes)
+    }
+    if (session.uri == MobileIdentityRules.DESKTOP_IDENTITY_PATH) {
+      if (!MobileIdentityRules.allowDesktopIdentity(true, session.method.name, session.uri, pairingStore.version())) {
+        return json(Response.Status.FORBIDDEN, JSONObject().put("error", "identidade indisponivel"))
+      }
+      val payload = runCatching { JSONObject(body) }.getOrNull()
+        ?: return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "identidade invalida"))
+      val host = payload.opt("host") as? String
+      val port = payload.opt("port") as? Int
+      val certificate = payload.opt("certificatePem") as? String
+      if (host == null || port == null || certificate == null) {
+        return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "identidade invalida"))
+      }
+      return when (pairingStore.registerDesktopIdentity(verifiedSecret, host, port, certificate)) {
+        DesktopIdentityResult.SAVED -> {
+          onAuthenticated()
+          val bytes = JSONObject().put("ok", true).toString().toByteArray(Charsets.UTF_8)
+          signed(session.headers["x-ispm-nonce"].orEmpty(), "application/json", bytes)
+        }
+        DesktopIdentityResult.INVALID -> json(Response.Status.BAD_REQUEST, JSONObject().put("error", "identidade invalida"))
+        DesktopIdentityResult.CONFLICT, DesktopIdentityResult.PAIRING_CHANGED -> json(Response.Status.CONFLICT, JSONObject().put("error", "identidade ou pareamento alterado"))
+        DesktopIdentityResult.UNAVAILABLE -> json(Response.Status.INTERNAL_ERROR, JSONObject().put("error", "identidade indisponivel"))
+      }
+    }
     return authenticated(session.method.name, session.uri, session.headers["x-ispm-nonce"].orEmpty(), body)
   }
 
@@ -107,7 +146,9 @@ class CompanionServer(
 
   /** The same routes, for a request that came sealed through the relay. */
   fun relayReply(method: String, uri: String, nonce: String, body: String): RelayReply {
-    val response = authenticated(method, uri, nonce, body)
+    val response = if (uri == MobileIdentityRules.CERTIFICATE_PATH || uri == MobileIdentityRules.DESKTOP_IDENTITY_PATH) {
+      json(Response.Status.FORBIDDEN, JSONObject().put("error", "prova indisponivel"))
+    } else authenticated(method, uri, nonce, body)
     val headers = HashMap<String, String>()
     response.mimeType?.let { headers["content-type"] = it }
     response.getHeader("x-ispm-response-signature")?.let { headers["x-ispm-response-signature"] = it }

@@ -1,3 +1,4 @@
+import { apiUrl } from './api';
 /**
  * Estado de licenciamento no renderer.
  *
@@ -14,7 +15,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import { authFetch } from './auth';
 
-const API_BASE = 'http://127.0.0.1:3001';
+const API_BASE = apiUrl('');
 
 export type LicenseState = 'trial' | 'active' | 'grace' | 'readonly' | 'invalid';
 

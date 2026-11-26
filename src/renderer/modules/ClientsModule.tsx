@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Smartphone, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -191,7 +192,7 @@ export function ClientsModule({
 
   const loadClients = useCallback(() => {
     setLoading(true);
-    return authFetch('http://127.0.0.1:3001/api/clients')
+    return authFetch(apiUrl('/api/clients'))
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar clientes');
@@ -225,7 +226,7 @@ export function ClientsModule({
     }
     let cancelled = false;
     setProfitabilityLoading(true);
-    authFetch(`http://127.0.0.1:3001/api/clients/${selectedClient.id}/profitability`)
+    authFetch(apiUrl(`/api/clients/${selectedClient.id}/profitability`))
       .then((response) => response.ok ? response.json() as Promise<ClientProfitability> : null)
       .then((data) => {
         if (!cancelled) setProfitability(data);
@@ -236,7 +237,7 @@ export function ClientsModule({
       .finally(() => {
         if (!cancelled) setProfitabilityLoading(false);
       });
-    authFetch(`http://127.0.0.1:3001/api/clients/${selectedClient.id}/notices`)
+    authFetch(apiUrl(`/api/clients/${selectedClient.id}/notices`))
       .then((response) => response.ok ? response.json() as Promise<ClientNotice[]> : [])
       .then((data) => {
         if (!cancelled) setNotices(data);
@@ -265,7 +266,7 @@ export function ClientsModule({
   }, [focusClientId, clients, loading, onFocusHandled]);
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/settings')
+    authFetch(apiUrl('/api/settings'))
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
@@ -333,7 +334,7 @@ export function ClientsModule({
   /** A mensagem geral por SMS: o backend usa o modelo do SMS e põe-na na fila do telemóvel. */
   async function sendClientSms(client: Client) {
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/clients/${client.id}/sms-general`, { method: 'POST' });
+      const response = await authFetch(apiUrl(`/api/clients/${client.id}/sms-general`), { method: 'POST' });
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error || 'Nao foi possivel enviar SMS');
@@ -349,7 +350,7 @@ export function ClientsModule({
     setSaving(true);
 
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/clients', {
+      const response = await authFetch(apiUrl('/api/clients'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -381,7 +382,7 @@ export function ClientsModule({
     setSaving(true);
 
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/clients/${editingClient.id}`, {
+      const response = await authFetch(apiUrl(`/api/clients/${editingClient.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -486,7 +487,7 @@ export function ClientsModule({
     setBulkSubmitting(true);
     try {
       const result = await runBulk(targets, async (client) => {
-        const response = await authFetch(`http://127.0.0.1:3001/api/clients/${client.id}`, {
+        const response = await authFetch(apiUrl(`/api/clients/${client.id}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

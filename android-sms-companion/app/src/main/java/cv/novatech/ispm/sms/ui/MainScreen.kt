@@ -113,13 +113,17 @@ fun SettingsScreen(
   onForgetPairing: () -> Unit,
   onLockEnabledChange: (Boolean) -> Unit,
   themePref: ThemePref = ThemePref.SYSTEM,
-  onThemeChange: (ThemePref) -> Unit = {}
+  onThemeChange: (ThemePref) -> Unit = {},
+  onOpenErp: () -> Unit = {}
 ) {
   LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding) {
     item { ScreenTitle("Definições") }
     if (!state.smsPermissionGranted) item { Box(Modifier.padding(bottom = 10.dp)) { PermissionBanner(onRequestPermission) } }
     if (!state.batteryExempt) item { Box(Modifier.padding(bottom = 10.dp)) { BatteryBanner(onRequestBatteryExemption) } }
     item { SettingsSection("Ligação ao ISPM") { StatusCard(state, onForgetPairing) } }
+    item { SettingsSection("ISPM no telemóvel") {
+      IspmButton("Abrir ISPM", onOpenErp, Modifier.fillMaxWidth(), ButtonVariant.SECONDARY)
+    } }
     item {
       SettingsSection("Aparência") {
         SegmentedControl(ThemePref.entries, themePref, { it.label }, onThemeChange)

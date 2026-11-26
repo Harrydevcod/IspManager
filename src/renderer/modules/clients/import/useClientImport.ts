@@ -1,3 +1,4 @@
+import { apiUrl } from '../../../lib/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authFetch } from '../../../lib/auth';
 import { isKnownIsland } from '../../../lib/islands';
@@ -65,7 +66,7 @@ export function useClientImport({ open, onCompleted, toast }: UseClientImportArg
   // Fetch existing-data hints when the dialog opens (used for dedup conflict markers).
   useEffect(() => {
     if (!open) return;
-    authFetch('http://127.0.0.1:3001/api/clients')
+    authFetch(apiUrl('/api/clients'))
       .then((res) => res.json() as Promise<Array<{ clientCode: string; nif: string | null; phone: string | null }>>)
       .then((rows) => {
         setExisting({
@@ -164,7 +165,7 @@ export function useClientImport({ open, onCompleted, toast }: UseClientImportArg
           .filter((row) => row.errors.length === 0)
           .map((row) => row.values)
       };
-      const response = await authFetch('http://127.0.0.1:3001/api/clients/bulk', {
+      const response = await authFetch(apiUrl('/api/clients/bulk'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -187,7 +188,7 @@ export function useClientImport({ open, onCompleted, toast }: UseClientImportArg
     if (downloadingTemplate) return;
     setDownloadingTemplate(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/clients/import-template.xlsx');
+      const response = await authFetch(apiUrl('/api/clients/import-template.xlsx'));
       if (!response.ok) {
         toast('Não foi possível descarregar o template.', 'error');
         return;

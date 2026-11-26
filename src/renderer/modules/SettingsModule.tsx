@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, Gauge, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
 import { DEFAULT_DELAY_LIMIT_DAYS, DEFAULT_PUNCTUALITY_SCALE } from '../../shared/payment-score';
 import QRCode from 'qrcode';
@@ -49,6 +50,7 @@ import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
 import { FupSettingsPanel } from './settings/FupSettingsPanel';
 import { useAuth } from '../lib/auth';
+import { MOBILE_ORIGIN } from '../lib/mobileBootstrap';
 
 export type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'fup' | 'backups' | 'jobs' | 'license' | 'vault';
 
@@ -253,7 +255,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     while (!token.cancelled) {
       await new Promise((resolve) => window.setTimeout(resolve, 1500));
       if (token.cancelled) return;
-      const data = await authFetch('http://127.0.0.1:3001/api/sms/pairing/session')
+      const data = await authFetch(apiUrl('/api/sms/pairing/session'))
         .then((response) => response.json() as Promise<{ state?: string; sas?: string; model?: string }>)
         .catch(() => null);
       if (token.cancelled) return;
@@ -273,7 +275,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function renewSmsPairing() {
     setSmsPairingBusy(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/renew', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/sms/pairing/renew'), { method: 'POST' });
       const data = (await response.json().catch(() => ({}))) as { error?: string; qrPayload?: string };
       if (!response.ok || !data.qrPayload) {
         setSmsSession(null);
@@ -291,7 +293,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function confirmSmsPairing() {
     setSmsPairingBusy(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/confirm', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/sms/pairing/confirm'), { method: 'POST' });
       const data = (await response.json().catch(() => ({}))) as { error?: string; baseUrl?: string; deviceName?: string };
       if (!response.ok) {
         setMessage({ tone: 'error', text: data.error || 'Nao foi possivel confirmar o pareamento.', placement: 'top' });
@@ -314,11 +316,11 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function cancelSmsPairing() {
     stopPairingPoll();
     setSmsSession(null);
-    await authFetch('http://127.0.0.1:3001/api/sms/pairing/session', { method: 'DELETE' }).catch(() => null);
+    await authFetch(apiUrl('/api/sms/pairing/session'), { method: 'DELETE' }).catch(() => null);
   }
 
   function loadSmsStatus() {
-    return authFetch('http://127.0.0.1:3001/api/sms/status')
+    return authFetch(apiUrl('/api/sms/status'))
       .then((response) => (response.ok ? (response.json() as Promise<SmsStatus>) : null))
       .then((data) => {
         setSmsStatus(data);
@@ -332,7 +334,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setSmsReport(null);
     try {
       const response = await authFetch(
-        `http://127.0.0.1:3001/api/sms/report?month=${encodeURIComponent(month)}`
+        apiUrl(`/api/sms/report?month=${encodeURIComponent(month)}`)
       );
       const data = (await response.json().catch(() => ({}))) as SmsMonthlyReport | { error?: string };
       if (requestId !== smsReportRequestRef.current) return;
@@ -363,7 +365,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function syncSmsNow() {
     setSmsSyncing(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/sync', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/sms/sync'), { method: 'POST' });
       const data = (await response.json().catch(() => ({}))) as { online?: boolean; pushed?: boolean; lastPush?: { reason: string | null } | null; error?: string };
       if (!response.ok) {
         setMessage({ tone: 'error', text: data.error ?? 'Não foi possível sincronizar.', placement: 'top' });
@@ -383,7 +385,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function detectSmsPhone() {
     setSmsDetecting(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/discover', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/sms/discover'), { method: 'POST' });
       const data = (await response.json().catch(() => ({}))) as { baseUrl?: string | null; candidates?: string[]; paired?: boolean; updated?: boolean };
       if (!response.ok) {
         setMessage({ tone: 'error', text: 'Nao foi possivel procurar o telemovel na rede.', placement: 'top' });
@@ -413,7 +415,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   async function createSmsPairing(confirmPassword: string): Promise<string | null> {
     setSmsPairingBusy(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', {
+      const response = await authFetch(apiUrl('/api/sms/pairing'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmPassword })
@@ -435,7 +437,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setSmsPairingBusy(true);
     stopPairingPoll();
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', { method: 'DELETE' });
+      const response = await authFetch(apiUrl('/api/sms/pairing'), { method: 'DELETE' });
       if (!response.ok) {
         setMessage({ tone: 'error', text: 'Nao foi possivel revogar o pareamento.', placement: 'top' });
         return;
@@ -454,7 +456,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
   useEffect(() => {
     void loadSmsStatus();
-    authFetch('http://127.0.0.1:3001/api/settings')
+    authFetch(apiUrl('/api/settings'))
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
@@ -606,7 +608,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         }))
         .filter((account) => account.bankName || account.accountName || account.accountNumber || account.reference);
       const savedForm = { ...form, bankAccounts: normalizedBankAccounts };
-      const response = await authFetch('http://127.0.0.1:3001/api/settings', {
+      const response = await authFetch(apiUrl('/api/settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -695,7 +697,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setProbeBusy(true);
     setProbeMessage('');
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/probe', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/network/probe'), { method: 'POST' });
       const result = await response.json() as { skipped?: boolean; checked?: number; up?: number; down?: number };
       if (!response.ok) {
         setProbeMessage('Nao foi possivel sondar a rede.');
@@ -713,7 +715,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
   async function loadRouterState() {
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/enforcement');
+      const response = await authFetch(apiUrl('/api/network/enforcement'));
       if (!response.ok) return;
       setRouterState(await response.json() as RouterEnforcementState);
     } catch {
@@ -725,7 +727,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setEnforceBusy(true);
     setEnforceMessage('');
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/enforce', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/network/enforce'), { method: 'POST' });
       const result = await response.json() as {
         error?: string; skipped?: boolean; aborted?: boolean; reason?: string;
         dryRun?: boolean; planned?: number; applied?: number; failed?: number; divergences?: number;
@@ -753,7 +755,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setAutoSuspendBusy(true);
     setAutoSuspendMessage('');
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/auto-suspension', { method: 'POST' });
+      const response = await authFetch(apiUrl('/api/network/auto-suspension'), { method: 'POST' });
       const result = await response.json() as {
         skipped?: boolean;
         aborted?: boolean;
@@ -798,7 +800,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     const abort = new AbortController();
     const timeout = window.setTimeout(() => abort.abort(), ROUTER_TEST_TIMEOUT_MS);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', {
+      const response = await authFetch(apiUrl('/api/network/router/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abort.signal,
@@ -938,6 +940,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
         {activeTab === 'sms' && (
           <SmsTab
+            canManageMobile={auth.hasRole('admin') && !auth.isAuthBypassed && window.location.origin !== MOBILE_ORIGIN}
             form={form}
             onUpdate={updateForm}
             onToggle={toggleForm}

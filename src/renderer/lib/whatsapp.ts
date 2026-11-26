@@ -1,3 +1,4 @@
+import { apiUrl } from './api';
 import type { WhatsappMessageData } from '../types';
 export {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -49,7 +50,7 @@ export async function sendWhatsapp(phone: string | null, body: string, payment?:
     throw new Error('Telefone WhatsApp invalido');
   }
 
-  const response = await authFetch('http://127.0.0.1:3001/api/whatsapp/send', {
+  const response = await authFetch(apiUrl('/api/whatsapp/send'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

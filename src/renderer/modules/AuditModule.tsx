@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, Banknote, Inbox, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -92,7 +93,7 @@ export function AuditModule() {
     if (entityFilter !== 'all') params.set('entityType', entityFilter);
     if (dateFrom) params.set('dateFrom', dateFrom);
     if (dateTo) params.set('dateTo', dateTo);
-    return authFetch(`http://127.0.0.1:3001/api/audit-logs?${params.toString()}`)
+    return authFetch(apiUrl(`/api/audit-logs?${params.toString()}`))
       .then((response) => {
         if (!response.ok) throw new Error('audit unavailable');
         return response.json() as Promise<AuditLogPage>;

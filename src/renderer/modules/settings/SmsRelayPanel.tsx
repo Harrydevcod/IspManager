@@ -1,10 +1,11 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Unlink } from 'lucide-react';
 import { Button, Field, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { olderVersion } from './smsPresence';
 
-const RELAY_API = 'http://127.0.0.1:3001/api/sms/relay';
+const RELAY_API = apiUrl('/api/sms/relay');
 
 export type SmsRelayState = { url: string; adminKeyConfigured: boolean; phoneSynced: boolean; needsPairing: boolean; appVersion?: string | null };
 

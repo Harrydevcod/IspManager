@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, CalendarClock, Handshake, PiggyBank, Wallet } from 'lucide-react';
 import {
@@ -35,7 +36,7 @@ import {
   type PaymentPlanStatus
 } from '../../types';
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 
 type Tab = 'faturas' | 'pagamentos' | 'avisos' | 'acordo' | 'comportamento';
 type Tone = 'success' | 'info' | 'warn' | 'danger' | 'neutral';

@@ -1,4 +1,5 @@
-export const PLAN_CHANGE_API = 'http://127.0.0.1:3001/api/plans/bulk-change';
+import { apiUrl } from '../../lib/api';
+export const PLAN_CHANGE_API = apiUrl('/api/plans/bulk-change');
 
 export type DropMode = 'none' | 'now' | 'scheduled';
 

@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download, MessageCircle, Package, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, Select, SkeletonList } from '../components';
@@ -50,7 +51,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       if (dateTo) params.set('dateTo', dateTo);
     }
 
-    authFetch(`http://127.0.0.1:3001/api/reports/summary?${params.toString()}`)
+    authFetch(apiUrl(`/api/reports/summary?${params.toString()}`))
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar relatorios');
@@ -71,7 +72,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
     if (view === 'incomplete' && issue) params.set('issue', issue);
 
-    authFetch(`http://127.0.0.1:3001/api/reports/data-quality?${params.toString()}`)
+    authFetch(apiUrl(`/api/reports/data-quality?${params.toString()}`))
       .then((response) => {
         if (!response.ok) throw new Error('Nao foi possivel carregar qualidade de dados');
         return response.json() as Promise<DataQualitySummary>;
@@ -81,7 +82,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   }, [view, issue, page, reloadTick]);
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/settings')
+    authFetch(apiUrl('/api/settings'))
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
@@ -176,7 +177,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
 
   async function dismissDuplicate(clientIdA: number, clientIdB: number) {
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/reports/data-quality/dismiss', {
+      const response = await authFetch(apiUrl('/api/reports/data-quality/dismiss'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientIdA, clientIdB })
@@ -184,7 +185,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       if (!response.ok) throw new Error('Nao foi possivel dispensar o par');
       setDq(null);
       const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-      const refetch = await authFetch(`http://127.0.0.1:3001/api/reports/data-quality?${params.toString()}`);
+      const refetch = await authFetch(apiUrl(`/api/reports/data-quality?${params.toString()}`));
       if (refetch.ok) setDq(await refetch.json() as DataQualitySummary);
       setError(null);
     } catch (err) {

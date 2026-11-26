@@ -27,16 +27,16 @@ data class SmsRequest(
  * The HTTP server thread, the UI and the SMS result receiver all write here, so
  * every read-modify-write is synchronized.
  */
-class SmsRequestStore(context: Context) {
+class SmsRequestStore(context: Context) : CompanionRequests {
   private val prefs = context.getSharedPreferences("requests", Context.MODE_PRIVATE)
 
   @Synchronized fun list(): List<SmsRequest> = decode(prefs.getString("rows", "[]") ?: "[]")
 
-  @Synchronized fun upsert(request: SmsRequest) {
+  @Synchronized override fun upsert(request: SmsRequest) {
     save(list().filter { it.id != request.id } + request)
   }
 
-  @Synchronized fun find(id: String): SmsRequest? = list().firstOrNull { it.id == id }
+  @Synchronized override fun find(id: String): SmsRequest? = list().firstOrNull { it.id == id }
 
   /** Applies [change] to one row and returns the new row (null if absent). */
   @Synchronized fun update(id: String, change: (SmsRequest) -> SmsRequest): SmsRequest? {

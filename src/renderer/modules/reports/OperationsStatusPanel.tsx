@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import {
   Activity, AlertTriangle, CheckCircle2, Download, MessageSquareWarning,
   Network, PackageSearch, RefreshCw, ShieldAlert
@@ -117,7 +118,7 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
     setSwitchingChannel(true);
     setChannelError(null);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/settings/whatsapp-channel', {
+      const response = await authFetch(apiUrl('/api/settings/whatsapp-channel'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: false })
@@ -140,7 +141,7 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
     setExportError(null);
     try {
       await downloadAuthenticated(
-        'http://127.0.0.1:3001/api/reports/operations.pdf',
+        apiUrl('/api/reports/operations.pdf'),
         'Estado da operacao.pdf'
       );
     } catch {

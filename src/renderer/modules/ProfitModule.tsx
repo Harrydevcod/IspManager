@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Banknote, Coins, Download, FileText, Gauge, Percent, RadioTower, TrendingDown, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, ErrorRetry, Field, Message, MetricCard, MetricGrid, ModuleHeaderActions, RevenueBars, formatCompactCve } from '../components';
@@ -34,7 +35,7 @@ export function ProfitModule() {
   const load = useCallback(() => {
     const params = new URLSearchParams();
     if (!showAllMonths) params.set('month', month);
-    return authFetch(`http://127.0.0.1:3001/api/investments?${params}`)
+    return authFetch(apiUrl(`/api/investments?${params}`))
       .then((response) => response.json() as Promise<InvestmentList>)
       .then((payload) => { setData(payload); setLoadError(null); })
       .catch(() => { setData(EMPTY_INVESTMENT_LIST); setLoadError('Não foi possível carregar a rentabilidade.'); });
@@ -45,7 +46,7 @@ export function ProfitModule() {
   }, [load]);
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/dashboard/summary')
+    authFetch(apiUrl('/api/dashboard/summary'))
       .then((response) => response.ok ? response.json() as Promise<{ revenueByMonth: RevenuePoint[]; activeClients: number }> : null)
       .then((payload) => {
         setRevenuePoints(payload?.revenueByMonth ?? []);
@@ -58,7 +59,7 @@ export function ProfitModule() {
   }, []);
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/reports/portfolio')
+    authFetch(apiUrl('/api/reports/portfolio'))
       .then((response) => response.ok ? response.json() as Promise<PortfolioReport> : null)
       .then((payload) => setPortfolio(payload ?? EMPTY_PORTFOLIO))
       .catch(() => setPortfolio(EMPTY_PORTFOLIO));
@@ -69,7 +70,7 @@ export function ProfitModule() {
     setExportError(null);
     try {
       const fallback = `Rentabilidade-${businessDay()}.${format}`;
-      await downloadAuthenticated(`http://127.0.0.1:3001/api/investments/report.${format}`, fallback);
+      await downloadAuthenticated(apiUrl(`/api/investments/report.${format}`), fallback);
     } catch {
       setExportError('Não foi possível gerar o relatório. Tenta novamente.');
     } finally {

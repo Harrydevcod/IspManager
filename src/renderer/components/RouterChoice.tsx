@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { useCallback, useEffect, useState } from 'react';
 import { authFetch } from '../lib/auth';
 import { Message } from './Message';
@@ -23,7 +24,7 @@ export function useRouterOptions(active = true): { options: RouterOptions; reloa
     if (!active) return undefined;
     let disposed = false;
     setOptions({ status: 'loading' });
-    authFetch('http://127.0.0.1:3001/api/network/router/options')
+    authFetch(apiUrl('/api/network/router/options'))
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);

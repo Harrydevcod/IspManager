@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Field, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -42,7 +43,7 @@ export function PunctualityScaleField({
     let alive = true;
     void (async () => {
       try {
-        const response = await authFetch('http://127.0.0.1:3001/api/finance/payment-scales');
+        const response = await authFetch(apiUrl('/api/finance/payment-scales'));
         if (!response.ok) return;
         const body = await response.json() as { scales: ScaleDistribution[] };
         if (alive) setScales(body.scales);

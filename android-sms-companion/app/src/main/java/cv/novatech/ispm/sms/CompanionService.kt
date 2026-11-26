@@ -49,6 +49,7 @@ class CompanionService : Service() {
       eventStore = app.eventStore,
       pendingPairing = { app.holder.pendingPairing },
       onPairConfirmed = { app.holder.completePairing(it) },
+      mobileCertificate = MobileDeviceIdentity::certificatePem,
       model = listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").trim().ifBlank { "Telemóvel" }
     )
     val started = runCatching { server?.start() }.isSuccess

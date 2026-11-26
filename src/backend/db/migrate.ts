@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { migrations as shippedMigrations } from './migrations';
 import type { Migration } from './migrations/types';
+import removeSmsInbox from './migrations/0113_remove_sms_inbox';
+import { archiveTableSql } from './migrations/0114_sms_inbox_archive';
 
 function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
@@ -70,6 +72,12 @@ export function runMigrations(
         continue;
       }
       const apply = db.transaction(() => {
+        if (m.version === 113 && m.sql === removeSmsInbox.sql) {
+          db.exec(archiveTableSql);
+          db.exec(`INSERT INTO sms_inbox_archive (id, event_id, client_id, phone, body, received_at, read_at)
+                   SELECT id, event_id, client_id, phone, body, received_at, read_at FROM sms_inbox`);
+          db.exec('DELETE FROM sms_inbox');
+        }
         db.exec(m.sql);
         const violations = db.prepare('PRAGMA foreign_key_check').all();
         if (violations.length > 0) {

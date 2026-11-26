@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Badge, Button, Dialog, Field, Message, Select, Textarea } from '../../components';
@@ -10,7 +11,7 @@ import './SaleTicketDialog.css';
 import { centavosToEscudos, escudosToCentavos } from '../../../shared/money';
 import { businessDay } from '../../../shared/business-day';
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 const today = () => businessDay();
 type Line = { key: string; catalogId: string; articleId: string; description: string; quantity: string; price: string; serials: string };
 const emptyLine = (): Line => ({ key: crypto.randomUUID(), catalogId: '', articleId: '', description: '', quantity: '1', price: '', serials: '' });

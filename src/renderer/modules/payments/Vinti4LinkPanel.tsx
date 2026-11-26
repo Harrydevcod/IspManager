@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useState } from 'react';
 import { Copy, ExternalLink, Link2 } from 'lucide-react';
 import { Button, Field, Message } from '../../components';
@@ -47,7 +48,7 @@ export function Vinti4LinkPanel({ paymentId, balanceCve, link, disabled, onChang
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const endpoint = `http://127.0.0.1:3001/api/payments/${paymentId}/vinti4-link`;
+  const endpoint = apiUrl(`/api/payments/${paymentId}/vinti4-link`);
 
   async function send(init: RequestInit) {
     setBusy(true);

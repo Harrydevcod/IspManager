@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -44,7 +45,7 @@ const NEW_DOCUMENT_BUTTONS: Array<[InformativeDocumentType, string]> = [
   ["proforma", "Nova proforma"],
 ];
 
-const API = "http://127.0.0.1:3001/api";
+const API = apiUrl("/api");
 const actionLabels: Record<ProposalAction, string> = {
   issue: "Emitir proposta",
   deliver: "Registar entrega",

@@ -70,6 +70,12 @@ function seedSmsReportRow(status: string, createdAt: string) {
 }
 
 describe('SMS routes', () => {
+  test('removing the SMS pairing also removes the trusted mobile device', async () => {
+    db.prepare("INSERT INTO app_settings (key,value) VALUES ('mobile_trusted_device','old-device')").run();
+    const response = await app.inject({method: 'DELETE', url: '/api/sms/pairing'});
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare("SELECT value FROM app_settings WHERE key = 'mobile_trusted_device'").get()).toBeUndefined();
+  });
   test('GET /api/sms/status returns pairing and connectivity without report counts', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/sms/status' });
     expect(response.statusCode).toBe(200);

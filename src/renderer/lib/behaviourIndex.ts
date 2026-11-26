@@ -1,3 +1,4 @@
+import { apiUrl } from './api';
 import { useEffect, useState } from 'react';
 import { authFetch } from './auth';
 import type { ClientBehaviour, PaymentBehaviourReport } from '../types';
@@ -27,7 +28,7 @@ export function useBehaviourIndex(): BehaviourIndex {
     let alive = true;
     void (async () => {
       try {
-        const response = await authFetch('http://127.0.0.1:3001/api/finance/payment-behaviour');
+        const response = await authFetch(apiUrl('/api/finance/payment-behaviour'));
         if (!response.ok) return;
         const report = await response.json() as PaymentBehaviourReport;
         if (alive) setByClient(new Map(report.clients.map((client) => [client.clientId, client])));

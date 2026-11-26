@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { AlertTriangle, Cable, Layers, ScrollText, ShieldAlert, Unplug, Waypoints, X } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, DataTable, Dialog, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
@@ -45,7 +46,7 @@ export function SessionsTable({ sessions, onChanged }: { sessions: RouterSession
   async function backfill(apply: boolean) {
     setBackfillBusy(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/pppoe/backfill', {
+      const response = await authFetch(apiUrl('/api/network/pppoe/backfill'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply })
       });
       const result = await response.json() as PppoeBackfillPlan & { error?: string };
@@ -69,7 +70,7 @@ export function SessionsTable({ sessions, onChanged }: { sessions: RouterSession
     if (row.serviceId === null) return;
     setBusyId(row.serviceId);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${row.serviceId}/disconnect`, { method: 'POST' });
+      const response = await authFetch(apiUrl(`/api/network/services/${row.serviceId}/disconnect`), { method: 'POST' });
       const result = await response.json() as { error?: string; dryRun?: boolean; online?: boolean; disconnected?: boolean };
       if (!response.ok) toast(result.error ?? 'Não foi possível desligar a sessão.', 'error');
       else if (result.dryRun) toast(`Ensaio: a sessão de ${row.login} seria desligada. Nada foi alterado.`, 'info');

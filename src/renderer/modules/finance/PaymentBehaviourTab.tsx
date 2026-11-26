@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { CalendarCheck, Gauge, ThumbsUp, TrendingDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -136,7 +137,7 @@ export function PaymentBehaviourTab({ onOpenClient }: { onOpenClient?: (clientId
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/finance/payment-behaviour');
+      const response = await authFetch(apiUrl('/api/finance/payment-behaviour'));
       if (!response.ok) {
         setLoadError('Não foi possível carregar o comportamento de pagamento.');
         return;

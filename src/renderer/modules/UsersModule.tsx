@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -59,7 +60,7 @@ export function UsersModule() {
 
   const load = useCallback(() => {
     setLoading(true);
-    return authFetch('http://127.0.0.1:3001/api/users')
+    return authFetch(apiUrl('/api/users'))
       .then((res) => {
         if (!res.ok) throw new Error('load failed');
         return res.json() as Promise<UserRow[]>;
@@ -118,7 +119,7 @@ export function UsersModule() {
           active: form.active
         };
         if (form.password) payload.password = form.password;
-        const response = await authFetch(`http://127.0.0.1:3001/api/users/${editing.id}`, {
+        const response = await authFetch(apiUrl(`/api/users/${editing.id}`), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -134,7 +135,7 @@ export function UsersModule() {
           toast('Password tem de ter pelo menos 8 caracteres.', 'error');
           return;
         }
-        const response = await authFetch('http://127.0.0.1:3001/api/users', {
+        const response = await authFetch(apiUrl('/api/users'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -166,7 +167,7 @@ export function UsersModule() {
       tone: 'danger',
       confirmLabel: 'Eliminar'
     }))) return;
-    const response = await authFetch(`http://127.0.0.1:3001/api/users/${row.id}`, {
+    const response = await authFetch(apiUrl(`/api/users/${row.id}`), {
       method: 'DELETE'
     });
     if (!response.ok) {
@@ -188,7 +189,7 @@ export function UsersModule() {
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/users/${resetting.id}/reset-password`, {
+      const response = await authFetch(apiUrl(`/api/users/${resetting.id}/reset-password`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: resetPassword })

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useState } from 'react';
 import { ArrowRightLeft } from 'lucide-react';
 import { Button, Dialog, Message, Select, Textarea, Toggle } from '../../components';
@@ -5,7 +6,7 @@ import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
 import type { DeviceAssignment } from '../../types';
 
-const API = 'http://127.0.0.1:3001';
+const API = apiUrl('');
 
 export type PromoteOwnerResult = {
   assignmentId: number;

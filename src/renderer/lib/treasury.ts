@@ -1,7 +1,8 @@
+import { apiUrl } from './api';
 import { useCallback, useEffect, useState } from 'react';
 import { authFetch } from './auth';
 
-export const TREASURY_API = 'http://127.0.0.1:3001/api/treasury';
+export const TREASURY_API = apiUrl('/api/treasury');
 
 export type TreasuryAccountKind = 'caixa' | 'banco';
 export type MovementKind =

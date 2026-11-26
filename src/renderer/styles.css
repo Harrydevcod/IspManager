@@ -7153,6 +7153,25 @@ button.danger:disabled {
 .sms-relay-panel { grid-column: 1 / -1; justify-items: center; text-align: center; }
 .sms-relay-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); width: 100%; text-align: start; }
 .sms-relay-fields .field { flex: 0 1 20rem; min-width: 0; }
+
+.mobile-access-panel { container-type: inline-size; margin-block: var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--r2); }
+.mobile-access-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.mobile-access-heading h3 { margin: 0; }
+.mobile-access-heading p { margin: var(--space-2) 0 0; color: var(--text-2); }
+.mobile-access-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: end; gap: var(--space-3); margin-top: var(--space-4); }
+.mobile-access-fields .field { min-width: 0; }
+.mobile-access-active { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); }
+@container (max-width: 340px) {
+  .mobile-access-fields { grid-template-columns: minmax(0, 1fr); }
+  .mobile-access-heading { flex-direction: column; gap: var(--space-2); }
+  .mobile-access-active { flex-wrap: wrap; }
+}
+@container (min-width: 700px) {
+  .mobile-access-fields { grid-template-columns: minmax(0, 1fr) minmax(6rem, .45fr) minmax(0, 1fr) auto; }
+}
+@media (max-width: 600px) {
+  .sidebar { position: static; }
+}
 /* Estado do pareamento: a cor reforça, o texto já diz tudo. */
 .sms-pairing-state { color: var(--text-2); max-width: 80ch; }
 .sms-pairing-state[data-tone='success'] { color: var(--success); }

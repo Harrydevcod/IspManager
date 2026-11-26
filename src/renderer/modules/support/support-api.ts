@@ -1,6 +1,7 @@
+import { apiUrl } from '../../lib/api';
 import { authFetch } from '../../lib/auth';
 
-export const TICKETS_API = 'http://127.0.0.1:3001/api/tickets';
+export const TICKETS_API = apiUrl('/api/tickets');
 
 export type TicketStatus = 'aberto' | 'em_curso' | 'aguarda_cliente' | 'resolvido' | 'fechado';
 export type TicketPriority = 'baixa' | 'media' | 'alta';
