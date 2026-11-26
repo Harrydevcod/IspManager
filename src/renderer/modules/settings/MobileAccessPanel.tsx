@@ -63,7 +63,7 @@ export function MobileAccessPanel() {
   return (
     <section className="mobile-access-panel" aria-labelledby="mobile-access-title">
       <div className="mobile-access-heading">
-        <div><h3 id="mobile-access-title">ISPM no telemóvel</h3><p>Use o ISPM no Android pareado enquanto o computador está ligado à mesma rede.</p></div>
+        <h3 id="mobile-access-title">ISPM no telemóvel</h3>
         <span className="sms-pairing-state" data-tone={status?.running ? 'success' : 'muted'} role="status">{status ? status.running ? 'Ativo' : 'Desligado' : 'A verificar…'}</span>
       </div>
       {status?.running ? (
