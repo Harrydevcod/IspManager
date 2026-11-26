@@ -1,3 +1,6 @@
+import { apiUrl } from './api';
+import { apiFetch } from './apiFetch';
+import { MOBILE_ORIGIN } from './mobileBootstrap';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -30,11 +33,11 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const STORAGE_KEY = 'ispm:auth-token';
-const API_BASE = 'http://127.0.0.1:3001';
+const API_BASE = apiUrl('');
 
 function readStoredToken(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    return (window.location.origin === MOBILE_ORIGIN ? sessionStorage : localStorage).getItem(STORAGE_KEY);
   } catch {
     return null;
   }
@@ -42,8 +45,9 @@ function readStoredToken(): string | null {
 
 function writeStoredToken(token: string | null): void {
   try {
-    if (token) localStorage.setItem(STORAGE_KEY, token);
-    else localStorage.removeItem(STORAGE_KEY);
+    const storage = window.location.origin === MOBILE_ORIGIN ? sessionStorage : localStorage;
+    if (token) storage.setItem(STORAGE_KEY, token);
+    else storage.removeItem(STORAGE_KEY);
   } catch {
     // ignore (private mode etc.)
   }
@@ -55,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const bootstrap = useCallback(async () => {
     try {
-      const statusResp = await fetch(`${API_BASE}/api/auth/status`);
+      const statusResp = await apiFetch(`${API_BASE}/api/auth/status`);
       if (!statusResp.ok) throw new Error('status unavailable');
       const statusBody = (await statusResp.json()) as { setupRequired: boolean; authBypassed: boolean };
       setIsAuthBypassed(statusBody.authBypassed);
@@ -80,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const meResp = await fetch(`${API_BASE}/api/auth/me`, {
+      const meResp = await apiFetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!meResp.ok) {
@@ -101,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrap]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const response = await fetch(`${API_BASE}/api/auth/login`, {
+    const response = await apiFetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -116,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setupAdmin = useCallback(async (username: string, password: string, fullName: string) => {
-    const response = await fetch(`${API_BASE}/api/auth/setup`, {
+    const response = await apiFetch(`${API_BASE}/api/auth/setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, fullName })
@@ -169,8 +173,14 @@ export function setAuthFetchToken(token: string | null) {
 export function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers ?? {});
   const token = currentToken || readStoredToken();
-  if (token && !headers.has('Authorization')) {
+  let isBackend = false;
+  try {
+    isBackend = new URL(input).origin === new URL(API_BASE).origin;
+  } catch {
+    // Relative or malformed URLs cannot establish the backend's origin.
+  }
+  if (token && isBackend && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  return fetch(input, { ...init, headers });
+  return apiFetch(input, { ...init, headers });
 }

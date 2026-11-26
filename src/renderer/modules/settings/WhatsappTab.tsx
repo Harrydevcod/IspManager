@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { Button, Field, Message, SecretField, Select, Toggle, type SecretDraft } from '../../components';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { TemplateField } from './TemplateField';
@@ -43,7 +44,7 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
   async function loadModels() {
     setModelStatus('A consultar modelos aprovados…');
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/whatsapp/meta/templates');
+      const response = await authFetch(apiUrl('/api/whatsapp/meta/templates'));
       const result = await response.json() as { templates?: Array<{ name: string; language: string; body: string }>; error?: string };
       if (!response.ok || !Array.isArray(result.templates)) throw new Error(result.error || 'Não foi possível consultar os modelos.');
       setModels(result.templates);

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, EmptyState, Field, Message, SkeletonList, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -48,7 +49,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
   const [suggestedMacs, setSuggestedMacs] = useState<Record<number, string>>({});
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/service-device-assignments')
+    authFetch(apiUrl('/api/service-device-assignments'))
       .then((response) => response.ok ? response.json() as Promise<ActiveAssignment[]> : Promise.reject(new Error('load')))
       .then((data) => {
         const prefix = suggestIpPrefix(data.map((row) => row.ipAddress));
@@ -63,7 +64,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
       .finally(() => setLoading(false));
     // O que a rede já sabe: o MAC que discou o PPPoE do serviço, ou o que a
     // varredura viu no endereço registado. Sem resposta, o diálogo fica como era.
-    authFetch('http://127.0.0.1:3001/api/network/discovery/proposals')
+    authFetch(apiUrl('/api/network/discovery/proposals'))
       .then((response) => response.ok ? response.json() as Promise<Reconciliation> : Promise.reject(new Error('load')))
       .then((data) => setSuggestedMacs(Object.fromEntries(
         data.proposals
@@ -130,7 +131,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
 
     setSubmitting(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/service-device-assignments', {
+      const response = await authFetch(apiUrl('/api/service-device-assignments'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items })

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useState } from 'react';
 import { Button, RouterChoice, type RouterOptions } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -31,7 +32,7 @@ export function PlanNetworkFields({ form, onUpdate, options, onReload }: {
     setBusy(true);
     setMessage('');
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/router/profiles');
+      const response = await authFetch(apiUrl('/api/network/router/profiles'));
       const body = (await response.json()) as ProfilesResponse;
       if (!body.available) {
         setMessage(body.reason ?? 'Router indisponível.');

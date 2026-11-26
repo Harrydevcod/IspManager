@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRightLeft } from 'lucide-react';
 import { Button, Combobox, Dialog, Message, Select, Textarea, Toggle } from '../../components';
@@ -6,7 +7,7 @@ import { formatCve } from '../../lib/format';
 import { statusLabel } from '../../lib/status';
 import type { Client, ServiceRow } from '../../types';
 
-const API = 'http://127.0.0.1:3001';
+const API = apiUrl('');
 
 export type TransferMode = 'manter' | 'reinstalar';
 

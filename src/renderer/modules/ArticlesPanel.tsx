@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pencil, Tags } from 'lucide-react';
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, Textarea, useToast } from '../components';
@@ -7,7 +8,7 @@ import { formatCve } from '../lib/format';
 import { sortByColumns, type SortState } from '../lib/listView';
 import type { ArticleRow } from '../types';
 
-const API = 'http://127.0.0.1:3001/api/articles';
+const API = apiUrl('/api/articles');
 const KIND_LABEL: Record<ArticleRow['kind'], string> = { product: 'Produto', service: 'Serviço' };
 
 type ArticleForm = { code: string; name: string; kind: ArticleRow['kind']; unitPriceCve: string; documentNote: string; active: '1' | '0' };

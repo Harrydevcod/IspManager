@@ -3,9 +3,10 @@ import { Sparkles, WifiOff } from 'lucide-react';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { Skeleton } from './Skeleton';
+import { MOBILE_ORIGIN } from '../lib/mobileBootstrap';
 
 type Block = { kind: 'heading' | 'item' | 'text'; text: string };
-type NotesState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; blocks: Block[] };
+type NotesState = { kind: 'loading' } | { kind: 'error' } | { kind: 'mobile' } | { kind: 'ready'; blocks: Block[] };
 
 /**
  * Markdown-lite das notas de release (títulos ##, bullets, **negrito**) para
@@ -35,6 +36,10 @@ export function ReleaseNotesDialog({ version, onClose }: { version: string; onCl
   const [state, setState] = useState<NotesState>({ kind: 'loading' });
 
   useEffect(() => {
+    if (window.location.origin === MOBILE_ORIGIN) {
+      setState({ kind: 'mobile' });
+      return;
+    }
     let cancelled = false;
     setState({ kind: 'loading' });
     fetch(`https://api.github.com/repos/Harrydevcod/IspManager/releases/tags/v${version}`, {
@@ -74,6 +79,9 @@ export function ReleaseNotesDialog({ version, onClose }: { version: string; onCl
           <p className="release-notes-empty">
             <WifiOff size={14} aria-hidden /> Não foi possível obter as notas desta versão. Verifica a ligação à internet.
           </p>
+        )}
+        {state.kind === 'mobile' && (
+          <p className="release-notes-empty">As notas desta versão não estão disponíveis no telemóvel.</p>
         )}
         {state.kind === 'ready' &&
           state.blocks.map((block, index) =>

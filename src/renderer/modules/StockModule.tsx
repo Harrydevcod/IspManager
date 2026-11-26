@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, Antenna, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Tags, Users, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
@@ -212,21 +213,21 @@ export function StockModule({
   }, []);
 
   const loadStock = useCallback(() => {
-    return authFetch('http://127.0.0.1:3001/api/stock/summary')
+    return authFetch(apiUrl('/api/stock/summary'))
       .then((response) => response.json() as Promise<StockSummary>)
       .then((data) => { setSummary(data); setLoadError(null); })
       .catch(() => { setSummary(null); setLoadError('Não foi possível carregar o stock.'); });
   }, []);
 
   const loadMovements = useCallback((catalog: StockCatalogRow) => {
-    return authFetch(`http://127.0.0.1:3001/api/stock?catalogId=${catalog.id}`)
+    return authFetch(apiUrl(`/api/stock?catalogId=${catalog.id}`))
       .then((response) => response.json() as Promise<{ movements: StockMovement[] }>)
       .then((data) => setMovements(data.movements))
       .catch(() => setMovements([]));
   }, []);
 
   const loadAssignments = useCallback((catalog: StockCatalogRow) => {
-    return authFetch(`http://127.0.0.1:3001/api/equipment-catalog/${catalog.id}/assignments`)
+    return authFetch(apiUrl(`/api/equipment-catalog/${catalog.id}/assignments`))
       .then((response) => response.json() as Promise<CatalogAssignments>)
       .then((data) => setAssignments(data))
       .catch(() => setAssignments(null));
@@ -321,7 +322,7 @@ export function StockModule({
 
   async function saveCatalog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const url = editingCatalog ? `http://127.0.0.1:3001/api/equipment-catalog/${editingCatalog.id}` : 'http://127.0.0.1:3001/api/equipment-catalog';
+    const url = editingCatalog ? apiUrl(`/api/equipment-catalog/${editingCatalog.id}`) : apiUrl('/api/equipment-catalog');
     // Um tipo escrito à mão que já exista com outra caixa é o mesmo tipo: adota-se
     // o que está no catálogo, para não ficarem dois gémeos na lista.
     const typed = catalogForm.type.trim();
@@ -371,7 +372,7 @@ export function StockModule({
       return;
     }
 
-    const response = await authFetch('http://127.0.0.1:3001/api/stock', {
+    const response = await authFetch(apiUrl('/api/stock'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

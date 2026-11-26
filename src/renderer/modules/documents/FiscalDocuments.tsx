@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Download, FilePlus2, Printer } from "lucide-react";
 import { Button, Field, Select } from "../../components";
@@ -16,7 +17,7 @@ import {
 import { ManualInvoiceDialog } from "../payments/ManualInvoiceDialog";
 import { SaleTicketDialog } from "../payments/SaleTicketDialog";
 import { SaleTicketDetailDialog } from "../payments/SaleTicketDetailDialog";
-const API = "http://127.0.0.1:3001/api";
+const API = apiUrl("/api");
 const STATUS_LABELS = {
   pending: "Pendente",
   overdue: "Em atraso",

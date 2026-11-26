@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Combobox, Dialog, Field, Message, Select, Textarea, Toggle } from '../../components';
@@ -6,7 +7,7 @@ import { formatCve } from '../../lib/format';
 import type { ArticleRow, Client, ServiceRow } from '../../types';
 import { businessDay } from '../../../shared/business-day';
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 const MAX_LINES = 20;
 const NIF_PATTERN = /^[12]\d{8}$/;
 

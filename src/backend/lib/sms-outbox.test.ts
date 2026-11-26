@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
 import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
@@ -44,6 +45,23 @@ afterAll(() => {
 });
 
 describe('SMS outbox', () => {
+  test.each(['GET', 'POST'] as const)('does not forward a signed %s request to a redirect destination', async method => {
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
+    let forwarded = 0;
+    const destination = createServer((_req, res) => { forwarded++; res.end('{}'); });
+    await new Promise<void>(resolve => destination.listen(0, '127.0.0.1', resolve));
+    const targetPort = (destination.address() as {port:number}).port;
+    const source = createServer((_req, res) => { res.writeHead(307, {location:`http://127.0.0.1:${targetPort}/mobile/device-certificate`}); res.end(); });
+    await new Promise<void>(resolve => source.listen(0, '127.0.0.1', resolve));
+    const sourcePort = (source.address() as {port:number}).port;
+    try {
+      await expect(signedFetch('/mobile/device-certificate', method, method === 'POST' ? {test:'payload'} : undefined, 5000, `http://127.0.0.1:${sourcePort}`, 'nonce')).rejects.toThrow();
+      expect(forwarded).toBe(0);
+    } finally {
+      source.closeAllConnections(); destination.closeAllConnections();
+      await Promise.all([new Promise<void>(resolve => source.close(() => resolve())), new Promise<void>(resolve => destination.close(() => resolve()))]);
+    }
+  });
   test('bounds a LAN request even when the caller does not supply a timeout', async () => {
     writeSecret(db, 'smsCompanionPairingKey', 'secret');
     const mock = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}'));

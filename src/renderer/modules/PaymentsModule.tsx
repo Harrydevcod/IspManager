@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cutDate } from '../../shared/business-day';
 import { SUSPENSION_NOTICE_LEAD_DAYS } from '../../shared/upcoming-suspension';
@@ -179,7 +180,7 @@ export function PaymentsModule({
 
   const loadPayments = useCallback(() => {
     setLoading(true);
-    return authFetch('http://127.0.0.1:3001/api/payments')
+    return authFetch(apiUrl('/api/payments'))
       .then(async (response) => {
         if (!response.ok) throw new Error('Não foi possível carregar os pagamentos.');
         const data: unknown = await response.json();
@@ -213,7 +214,7 @@ export function PaymentsModule({
 
   useEffect(() => {
     let cancelled = false;
-    authFetch('http://127.0.0.1:3001/api/settings')
+    authFetch(apiUrl('/api/settings'))
       .then((response) => response.ok ? response.json() : null)
       .then((settings: {
         companyName?: string;
@@ -346,7 +347,7 @@ export function PaymentsModule({
   async function sendDocumentWhatsapp(payment: PaymentRow, kind: 'invoice' | 'receipt') {
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/whatsapp`, {
+      const response = await authFetch(apiUrl(`/api/payments/${payment.id}/whatsapp`), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ kind })
@@ -372,7 +373,7 @@ export function PaymentsModule({
   async function sendPaymentSms(payment: PaymentRow, eventType: SmsEventType) {
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/sms`, {
+      const response = await authFetch(apiUrl(`/api/payments/${payment.id}/sms`), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ eventType })
@@ -397,7 +398,7 @@ export function PaymentsModule({
     setMonthlyLoading(true);
     setMonthlyPreview(null);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/billing/preview-monthly', {
+      const response = await authFetch(apiUrl('/api/billing/preview-monthly'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referenceMonth })
@@ -425,7 +426,7 @@ export function PaymentsModule({
     setReverseLoading(true);
     setReversePreview(null);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/billing/preview-reverse-monthly', {
+      const response = await authFetch(apiUrl('/api/billing/preview-reverse-monthly'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referenceMonth })
@@ -453,7 +454,7 @@ export function PaymentsModule({
     if (!reversePreview || reversePreview.eligibleCount === 0) return;
     setReverseSubmitting(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/billing/reverse-monthly', {
+      const response = await authFetch(apiUrl('/api/billing/reverse-monthly'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referenceMonth: reversePreview.referenceMonth })
@@ -486,7 +487,7 @@ export function PaymentsModule({
     if (!individualRevert) return;
     setIndividualRevertSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${individualRevert.id}/revert`, {
+      const response = await authFetch(apiUrl(`/api/payments/${individualRevert.id}/revert`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -513,7 +514,7 @@ export function PaymentsModule({
     if (!monthlyPreview) return;
     setMonthlyLoading(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/billing/generate-monthly', {
+      const response = await authFetch(apiUrl('/api/billing/generate-monthly'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referenceMonth: monthlyPreview.referenceMonth })
@@ -530,7 +531,7 @@ export function PaymentsModule({
   async function submitPayment(paymentId: number, method: PaymentMethod, date: string, amountCve?: number, accountId?: number) {
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/pay`, {
+      const response = await authFetch(apiUrl(`/api/payments/${paymentId}/pay`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paymentMethod: method, paymentDate: date, amountCve, accountId: accountId || undefined })
@@ -559,7 +560,7 @@ export function PaymentsModule({
   /** Historico de recebimentos + credito do cliente, para o dialogo aberto. */
   const loadReceipts = useCallback(async (paymentId: number) => {
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/receipts`);
+      const response = await authFetch(apiUrl(`/api/payments/${paymentId}/receipts`));
       if (!response.ok) {
         setReceipts([]);
         setClientCreditCve(0);
@@ -579,7 +580,7 @@ export function PaymentsModule({
   async function applyCredit(paymentId: number) {
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/apply-credit`, { method: 'POST' });
+      const response = await authFetch(apiUrl(`/api/payments/${paymentId}/apply-credit`), { method: 'POST' });
       const body = await response.json().catch(() => ({ error: 'Nao foi possivel abater o credito.' })) as { error?: string; amountCve?: number };
       if (!response.ok) {
         toast(body.error || 'Nao foi possivel abater o credito.', 'error');
@@ -600,7 +601,7 @@ export function PaymentsModule({
     setSubmitting(true);
     try {
       const refunding = refundPassword !== null;
-      const response = await authFetch(`http://127.0.0.1:3001/api/receipts/${voidTarget.id}/${refunding ? 'stripe-refund' : 'void'}`, {
+      const response = await authFetch(apiUrl(`/api/receipts/${voidTarget.id}/${refunding ? 'stripe-refund' : 'void'}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(refunding ? { reason: voidReason, confirmPassword: refundPassword } : { reason: voidReason })
@@ -640,7 +641,7 @@ export function PaymentsModule({
   }
 
   async function markOverdue(payment: PaymentRow) {
-    const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/overdue`, {
+    const response = await authFetch(apiUrl(`/api/payments/${payment.id}/overdue`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -661,7 +662,7 @@ export function PaymentsModule({
     const wasPaid = target?.status === 'paid';
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/cancel`, {
+      const response = await authFetch(apiUrl(`/api/payments/${paymentId}/cancel`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason.trim() })
@@ -695,7 +696,7 @@ export function PaymentsModule({
   async function regenerateMonthlyPayment(payment: PaymentRow) {
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/regenerate`, {
+      const response = await authFetch(apiUrl(`/api/payments/${payment.id}/regenerate`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -723,7 +724,7 @@ export function PaymentsModule({
   async function openOverduePreview(noticeType: WhatsappNoticeType = 'overdue') {
     setNotifyLoading(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/payments/notify-overdue', {
+      const response = await authFetch(apiUrl('/api/payments/notify-overdue'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true, noticeType })
@@ -751,7 +752,7 @@ export function PaymentsModule({
     if (!overduePreview || overduePreview.eligible.length === 0) return;
     setNotifySending(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/payments/notify-overdue', {
+      const response = await authFetch(apiUrl('/api/payments/notify-overdue'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false, noticeType: overduePreview.noticeType })
@@ -822,7 +823,7 @@ export function PaymentsModule({
     setBulkSubmitting(true);
     try {
       const result = await runBulk(targets, async (payment) => {
-        const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/pay`, {
+        const response = await authFetch(apiUrl(`/api/payments/${payment.id}/pay`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ paymentMethod: method, paymentDate: date, accountId })
@@ -848,7 +849,7 @@ export function PaymentsModule({
     setBulkSubmitting(true);
     try {
       const result = await runBulk(targets, async (payment) => {
-        const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/cancel`, {
+        const response = await authFetch(apiUrl(`/api/payments/${payment.id}/cancel`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
@@ -868,7 +869,7 @@ export function PaymentsModule({
   // injetado pelo authFetch (download) ou pelo useAuthenticatedObjectUrl (iframe).
   function documentEndpoint(paymentId: number, type: 'invoice' | 'receipt', inline = false) {
     const suffix = type === 'invoice' ? 'invoice.pdf' : 'receipt.pdf';
-    return `http://127.0.0.1:3001/api/payments/${paymentId}/${suffix}${inline ? '?inline=1' : ''}`;
+    return apiUrl(`/api/payments/${paymentId}/${suffix}${inline ? '?inline=1' : ''}`);
   }
 
   function documentNumber(payment: PaymentRow, type: 'invoice' | 'receipt') {
@@ -919,7 +920,7 @@ export function PaymentsModule({
    */
   async function openReceiptPdf(receipt: PaymentReceipt) {
     try {
-      const result = await printAuthenticated(`http://127.0.0.1:3001/api/receipts/${receipt.id}/receipt.pdf?inline=1`);
+      const result = await printAuthenticated(apiUrl(`/api/receipts/${receipt.id}/receipt.pdf?inline=1`));
       if (result.canceled) return;
       toast(`Recibo ${receipt.receiptNumber} enviado para impressao.`, 'success');
     } catch {

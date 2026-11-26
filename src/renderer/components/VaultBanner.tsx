@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { authFetch, useAuth } from '../lib/auth';
@@ -27,7 +28,7 @@ export function VaultBanner({ onOpen }: { onOpen: () => void }) {
     if (!allowed) return;
     let alive = true;
     const read = () => {
-      authFetch('http://127.0.0.1:3001/api/vault/status')
+      authFetch(apiUrl('/api/vault/status'))
         .then(async (response) => (response.ok ? await response.json() as VaultReading : null))
         .then((next) => { if (alive) setReading(next); })
         .catch(() => { if (alive) setReading(null); });

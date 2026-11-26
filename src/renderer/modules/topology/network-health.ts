@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { authFetch } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 
@@ -66,7 +67,7 @@ function captureSummary(capture: DropCapture): string {
   return lost === 0 ? `${total} · todas com ARP` : `${total} · ${lost} sem resposta no ARP`;
 }
 
-export const NETWORK_API = 'http://127.0.0.1:3001/api/network';
+export const NETWORK_API = apiUrl('/api/network');
 
 export const TONE_LABEL: Record<HealthTone, { label: string; badge: 'success' | 'warn' | 'danger' }> = {
   ok: { label: 'Estável', badge: 'success' },

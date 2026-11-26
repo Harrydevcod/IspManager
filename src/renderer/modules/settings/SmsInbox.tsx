@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -13,7 +14,7 @@ type InboxMessage = {
   readAt: string | null;
 };
 
-const API = 'http://127.0.0.1:3001/api/sms/inbox';
+const API = apiUrl('/api/sms/inbox');
 
 /**
  * Respostas dos clientes aos SMS, reencaminhadas pela app móvel (só de números

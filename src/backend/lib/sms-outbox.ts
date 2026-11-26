@@ -152,6 +152,7 @@ async function lanFetch(path: string, method: 'GET' | 'POST', bodyObject?: unkno
   const signature = createSmsSignature({ secret, method, path, timestamp, nonce, body });
   return fetch(`${baseUrl}${path}`, {
     method,
+    redirect: 'error',
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'x-ispm-timestamp': timestamp,

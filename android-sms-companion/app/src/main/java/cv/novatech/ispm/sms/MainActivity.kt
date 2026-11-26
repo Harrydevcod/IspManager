@@ -133,7 +133,8 @@ class MainActivity : FragmentActivity() {
           },
           onNotificationRead = { app.holder.markNotificationRead(it.uid) },
           onNotificationsSeen = { app.holder.markNotificationsSeen() },
-          onMarkAllNotificationsRead = { app.holder.markAllNotificationsRead() }
+          onMarkAllNotificationsRead = { app.holder.markAllNotificationsRead() },
+          onOpenErp = { startActivity(Intent(this, MobileErpActivity::class.java)) }
         )
       }
     }

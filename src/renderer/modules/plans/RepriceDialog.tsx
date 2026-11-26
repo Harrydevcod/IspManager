@@ -1,9 +1,10 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Button, Dialog, ErrorRetry, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
 
-const API_BASE = 'http://127.0.0.1:3001';
+const API_BASE = apiUrl('');
 
 export type RepriceRow = {
   serviceId: number;

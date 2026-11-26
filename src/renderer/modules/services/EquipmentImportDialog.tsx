@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Message, SkeletonList, type DataTableColumn } from '../../components';
@@ -8,7 +9,7 @@ import { buildEquipmentPreview, equipmentTemplate, EQUIPMENT_LABELS, type Equipm
 import '../clients/import/ClientImportDialog.css';
 import './EquipmentImportDialog.css';
 
-const API = 'http://127.0.0.1:3001/api/service-device-assignments';
+const API = apiUrl('/api/service-device-assignments');
 
 export function EquipmentImportDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [equipment, setEquipment] = useState<EquipmentAssignment[]>([]);

@@ -1,3 +1,5 @@
+import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/apiFetch';
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { AlertCircle, ArrowRight, DatabaseBackup, Loader2, ShieldCheck } from 'lucide-react';
@@ -69,7 +71,7 @@ function SetupScreen() {
     if (!filePath) return;
     setImporting(true);
     try {
-      const response = await fetch('http://127.0.0.1:3001/api/backups/setup-import', {
+      const response = await apiFetch(apiUrl('/api/backups/setup-import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath })

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Download, Printer, X } from 'lucide-react';
 import { Badge, Button, Dialog, ErrorRetry, Field, Message, Select, Textarea, Toggle } from '../../components';
@@ -8,7 +9,7 @@ import type { PaymentRow } from '../../types';
 import { METHOD_LABELS } from './ReceiptsSection';
 import './SaleTicketDialog.css';
 
-const API = 'http://127.0.0.1:3001/api/payments';
+const API = apiUrl('/api/payments');
 type SaleTicket = {
   paymentId: number; documentNumber: string; amountCve: number; status: string;
   paymentMethod: string; accountId: number | null; issuedOn: string; notes: string | null; clientName: string;

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useState } from 'react';
 import { Copy, Link2 } from 'lucide-react';
 import { Button, Field, Message } from '../../components';
@@ -62,7 +63,7 @@ export function StripeLinkPanel({ paymentId, balanceCve, link, disabled, onChang
     setBusy(true);
     setError('');
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/stripe-link`, { method: 'POST' });
+      const response = await authFetch(apiUrl(`/api/payments/${paymentId}/stripe-link`), { method: 'POST' });
       const body = await response.json().catch(() => ({})) as StripeLinkInfo & { error?: string };
       if (!response.ok) {
         setError(body.error || 'Nao foi possivel criar o link de pagamento.');

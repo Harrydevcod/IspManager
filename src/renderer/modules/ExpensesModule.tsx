@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -182,7 +183,7 @@ export function ExpensesModule() {
   const [templateSaving, setTemplateSaving] = useState(false);
 
   const loadTemplates = () =>
-    authFetch('http://127.0.0.1:3001/api/expense-templates')
+    authFetch(apiUrl('/api/expense-templates'))
       .then((r) => r.ok ? r.json() as Promise<ExpenseTemplateList> : { rows: [], totals: { count: 0, totalActiveMonthlyCve: 0 } })
       .then(setTemplates)
       .catch(() => setTemplates({ rows: [], totals: { count: 0, totalActiveMonthlyCve: 0 } }));
@@ -199,7 +200,7 @@ export function ExpensesModule() {
     if (!Number.isFinite(amount) || amount < 0) { toast('Valor invalido'); return; }
     setTemplateSaving(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/expense-templates', {
+      const response = await authFetch(apiUrl('/api/expense-templates'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -221,7 +222,7 @@ export function ExpensesModule() {
   };
 
   const toggleTemplate = async (template: ExpenseTemplate) => {
-    await authFetch(`http://127.0.0.1:3001/api/expense-templates/${template.id}`, {
+    await authFetch(apiUrl(`/api/expense-templates/${template.id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -247,12 +248,12 @@ export function ExpensesModule() {
       tone: 'danger',
       confirmLabel: 'Apagar'
     }))) return;
-    await authFetch(`http://127.0.0.1:3001/api/expense-templates/${template.id}`, { method: 'DELETE' });
+    await authFetch(apiUrl(`/api/expense-templates/${template.id}`), { method: 'DELETE' });
     await loadTemplates();
   };
 
   const runTemplates = async () => {
-    const response = await authFetch('http://127.0.0.1:3001/api/expense-templates/run', { method: 'POST' });
+    const response = await authFetch(apiUrl('/api/expense-templates/run'), { method: 'POST' });
     const result = await response.json() as { ran?: true; generated?: number; skipped?: true; reason?: string };
     if (result.ran) {
       toast(`${result.generated} despesa(s) gerada(s)`);
@@ -264,11 +265,11 @@ export function ExpensesModule() {
   };
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/investments?showAll=1')
+    authFetch(apiUrl('/api/investments?showAll=1'))
       .then((r) => r.ok ? r.json() as Promise<InvestmentList> : null)
       .then((payload) => setInvestments(payload?.rows ?? []))
       .catch(() => setInvestments([]));
-    authFetch('http://127.0.0.1:3001/api/clients')
+    authFetch(apiUrl('/api/clients'))
       .then((r) => r.ok ? r.json() as Promise<Client[]> : [])
       .then(setClients)
       .catch(() => setClients([]));
@@ -288,7 +289,7 @@ export function ExpensesModule() {
       const params = new URLSearchParams();
       if (!showAllMonths) params.set('month', month);
       if (category !== 'all') params.set('category', category);
-      const response = await authFetch(`http://127.0.0.1:3001/api/expenses?${params}`);
+      const response = await authFetch(apiUrl(`/api/expenses?${params}`));
       if (!response.ok) throw new Error('Nao foi possivel carregar despesas');
       const payload = (await response.json()) as ExpenseList;
       setData(payload);
@@ -354,8 +355,8 @@ export function ExpensesModule() {
         accountId: form.accountId ? Number(form.accountId) : null
       };
       const url = editing
-        ? `http://127.0.0.1:3001/api/expenses/${editing.id}`
-        : 'http://127.0.0.1:3001/api/expenses';
+        ? apiUrl(`/api/expenses/${editing.id}`)
+        : apiUrl('/api/expenses');
       const response = await authFetch(url, {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -385,7 +386,7 @@ export function ExpensesModule() {
       confirmLabel: 'Apagar'
     }))) return;
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/expenses/${expense.id}`, { method: 'DELETE' });
+      const response = await authFetch(apiUrl(`/api/expenses/${expense.id}`), { method: 'DELETE' });
       if (!response.ok) throw new Error('Nao foi possivel apagar');
       toast('Despesa apagada');
       await load();

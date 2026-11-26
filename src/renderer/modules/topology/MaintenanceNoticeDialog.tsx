@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Button, Dialog, Field, Message, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -18,7 +19,7 @@ export function MaintenanceNoticeDialog({ deviceId, deviceName, open, onClose }:
   const [result, setResult] = useState<Preview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const url = `http://127.0.0.1:3001/api/backbone/${deviceId}/maintenance-notice`;
+  const url = apiUrl(`/api/backbone/${deviceId}/maintenance-notice`);
 
   useEffect(() => {
     if (!open) return;

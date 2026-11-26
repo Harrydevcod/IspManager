@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, Cable, History, Pencil, Plus, Tags, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
@@ -98,7 +99,7 @@ export function PlansModule() {
 
   function loadPlans() {
     setLoading(true);
-    return authFetch('http://127.0.0.1:3001/api/plans')
+    return authFetch(apiUrl('/api/plans'))
       .then(async (response) => {
         if (!response.ok) throw new Error('Não foi possível carregar os planos.');
         const data: unknown = await response.json();
@@ -153,7 +154,7 @@ export function PlansModule() {
 
   async function savePlan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const url = editingPlan ? `http://127.0.0.1:3001/api/plans/${editingPlan.id}` : 'http://127.0.0.1:3001/api/plans';
+    const url = editingPlan ? apiUrl(`/api/plans/${editingPlan.id}`) : apiUrl('/api/plans');
     const response = await authFetch(url, {
       method: editingPlan ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },

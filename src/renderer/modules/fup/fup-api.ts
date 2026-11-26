@@ -1,7 +1,8 @@
+import { apiUrl } from '../../lib/api';
 import { authFetch } from '../../lib/auth';
 import type { ClientFup } from '../../types';
 
-export const FUP_API = 'http://127.0.0.1:3001/api/fup';
+export const FUP_API = apiUrl('/api/fup');
 
 export type FupState = 'NORMAL' | 'AVISO' | 'LIMITADO';
 

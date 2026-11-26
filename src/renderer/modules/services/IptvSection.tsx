@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useRef, useState } from 'react';
 import { ScanSearch, Tv } from 'lucide-react';
 import { parseCidr } from '../../../shared/ip-range';
@@ -80,7 +81,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
     setBusy('save');
     setError(null);
     try {
-      await iptvRequest(`http://127.0.0.1:3001/api/services/${service.id}/iptv`, { method: 'PUT', body: { iptvVpn, iptvProviderId } });
+      await iptvRequest(apiUrl(`/api/services/${service.id}/iptv`), { method: 'PUT', body: { iptvVpn, iptvProviderId } });
       onChanged();
     } catch (failure) {
       setError((failure as Error).message);

@@ -1,9 +1,10 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Select, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
 import type { BackboneAssignmentSummary, BackbonePage } from '../../../shared/backbone';
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 const NEW_DEVICE = 'new';
 
 type ServiceOption = { id: number; clientCode: string; clientName: string; planName: string | null; status: string };

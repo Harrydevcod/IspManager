@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { ErrorRetry, SkeletonList } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -33,7 +34,7 @@ export function ClientBehaviourPanel({ clientId }: { clientId: number }) {
     void (async () => {
       try {
         const response = await authFetch(
-          `http://127.0.0.1:3001/api/finance/payment-behaviour/${clientId}`
+          apiUrl(`/api/finance/payment-behaviour/${clientId}`)
         );
         if (!response.ok) throw new Error('resposta inesperada');
         const body = await response.json() as ClientBehaviourDetail;

@@ -1,3 +1,5 @@
+import { apiUrl } from './lib/api';
+import { apiFetch } from './lib/apiFetch';
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, NotificationBell, NotificationsProvider, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
@@ -192,7 +194,7 @@ function AppShell() {
 
   useEffect(() => {
     const check = () => {
-      fetch('http://127.0.0.1:3001/health')
+      apiFetch(apiUrl('/health'))
         .then((response) => setHealth(response.ok ? 'online' : 'offline'))
         .catch(() => setHealth('offline'));
     };
@@ -202,7 +204,7 @@ function AppShell() {
   }, []);
 
   const refreshSummary = useCallback(() => {
-    authFetch('http://127.0.0.1:3001/api/dashboard/summary')
+    authFetch(apiUrl('/api/dashboard/summary'))
       .then((response) => {
         if (!response.ok) throw new Error('summary unavailable');
         return response.json() as Promise<DashboardSummary>;
@@ -212,7 +214,7 @@ function AppShell() {
   }, []);
 
   const refreshNotifications = useCallback(() => {
-    authFetch('http://127.0.0.1:3001/api/notifications')
+    authFetch(apiUrl('/api/notifications'))
       .then((response) => {
         if (!response.ok) throw new Error('notifications unavailable');
         return response.json() as Promise<NotificationFeed>;
@@ -231,7 +233,7 @@ function AppShell() {
   }, [refreshSummary, refreshNotifications]);
 
   const notificationPost = useCallback((path: string) => {
-    void authFetch(`http://127.0.0.1:3001/api/notifications${path}`, { method: 'POST' })
+    void authFetch(apiUrl(`/api/notifications${path}`), { method: 'POST' })
       .catch(() => undefined);
   }, []);
 

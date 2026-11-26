@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { ArrowRightLeft, KeyRound, Network, Pencil, Plus, Upload, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -177,7 +178,7 @@ export function ServicesModule({
 
   function loadServices() {
     setLoading(true);
-    return authFetch('http://127.0.0.1:3001/api/services')
+    return authFetch(apiUrl('/api/services'))
       .then((response) => response.json() as Promise<ServiceRow[]>)
       .then((data) => {
         setServices(data);
@@ -193,15 +194,15 @@ export function ServicesModule({
 
   useEffect(() => {
     void loadServices();
-    authFetch('http://127.0.0.1:3001/api/clients')
+    authFetch(apiUrl('/api/clients'))
       .then((response) => response.json() as Promise<Client[]>)
       .then(setClients)
       .catch(() => setClients([]));
-    authFetch('http://127.0.0.1:3001/api/plans')
+    authFetch(apiUrl('/api/plans'))
       .then((response) => response.json() as Promise<PlanRow[]>)
       .then(setPlans)
       .catch(() => setPlans([]));
-    authFetch('http://127.0.0.1:3001/api/audiovisual-config')
+    authFetch(apiUrl('/api/audiovisual-config'))
       .then((response) => response.ok ? response.json() as Promise<AudiovisualConfig> : null)
       .then((config) => setAvConfig(config))
       .catch(() => setAvConfig(null));
@@ -277,7 +278,7 @@ export function ServicesModule({
   async function syncServiceNetwork(service: ServiceRow) {
     setNetworkAction('sync');
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${service.id}/sync`, {
+      const response = await authFetch(apiUrl(`/api/network/services/${service.id}/sync`), {
         method: 'POST'
       });
       const result = await response.json().catch(() => ({})) as {
@@ -320,7 +321,7 @@ export function ServicesModule({
 
     setNetworkAction('disconnect');
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${service.id}/disconnect`, {
+      const response = await authFetch(apiUrl(`/api/network/services/${service.id}/disconnect`), {
         method: 'POST'
       });
       const result = await response.json().catch(() => ({})) as {
@@ -376,7 +377,7 @@ export function ServicesModule({
     const suspending = body.status === 'suspended';
     setNetworkAction(body.status);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}/status`, {
+      const response = await authFetch(apiUrl(`/api/services/${service.id}/status`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -430,7 +431,7 @@ export function ServicesModule({
     setNetworkAction('password');
     try {
       const response = await authFetch(
-        `http://127.0.0.1:3001/api/services/${passwordTarget.id}/pppoe-password`,
+        apiUrl(`/api/services/${passwordTarget.id}/pppoe-password`),
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -464,7 +465,7 @@ export function ServicesModule({
     };
     setHistoryLoading(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
+      const response = await authFetch(apiUrl(`/api/services/${serviceId}/technical-history`));
       if (!response.ok) {
         setTechnicalHistory(empty);
         return empty;
@@ -483,7 +484,7 @@ export function ServicesModule({
   async function ensureCatalogLoaded() {
     if (catalogList.length > 0) return;
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/stock/summary');
+      const response = await authFetch(apiUrl('/api/stock/summary'));
       if (!response.ok) return;
       const data = await response.json() as StockSummary;
       setCatalogList(data.rows.filter((r) => r.active));
@@ -565,7 +566,7 @@ export function ServicesModule({
 
   /** Antenas ativas de outros serviços, candidatas a servir também este cliente. */
   function loadShareableDevices() {
-    return authFetch('http://127.0.0.1:3001/api/service-device-assignments')
+    return authFetch(apiUrl('/api/service-device-assignments'))
       .then((response) => response.ok ? response.json() as Promise<ActiveAssignment[]> : [])
       .then(setShareableDevices)
       .catch(() => setShareableDevices([]));
@@ -580,7 +581,7 @@ export function ServicesModule({
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${shareChoice}/shares`, {
+      const response = await authFetch(apiUrl(`/api/service-device-assignments/${shareChoice}/shares`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serviceId: selectedService.id })
@@ -614,7 +615,7 @@ export function ServicesModule({
     setSubmitting(true);
     try {
       const response = await authFetch(
-        `http://127.0.0.1:3001/api/service-device-assignments/${assignment.id}/shares/${selectedService.id}`,
+        apiUrl(`/api/service-device-assignments/${assignment.id}/shares/${selectedService.id}`),
         { method: 'DELETE' }
       );
       const data = await response.json() as { error?: string };
@@ -689,7 +690,7 @@ export function ServicesModule({
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/items`, {
+      const response = await authFetch(apiUrl(`/api/services/${selectedService.id}/items`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -725,7 +726,7 @@ export function ServicesModule({
     }))) return;
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}`, {
+      const response = await authFetch(apiUrl(`/api/services/${service.id}`), {
         method: 'DELETE'
       });
       if (response.status === 409) {
@@ -801,7 +802,7 @@ export function ServicesModule({
     setSubmitting(true);
     setReturnError(null);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${returnTarget.service.id}/returns`, {
+      const response = await authFetch(apiUrl(`/api/services/${returnTarget.service.id}/returns`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -834,7 +835,7 @@ export function ServicesModule({
     setPurchaseError(null);
     try {
       const response = await authFetch(
-        `http://127.0.0.1:3001/api/service-device-assignments/${purchaseTarget.id}/purchase`,
+        apiUrl(`/api/service-device-assignments/${purchaseTarget.id}/purchase`),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -885,7 +886,7 @@ export function ServicesModule({
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${replaceTarget.id}/replace`, {
+      const response = await authFetch(apiUrl(`/api/service-device-assignments/${replaceTarget.id}/replace`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -950,7 +951,7 @@ export function ServicesModule({
     if (!selectedService || !editTarget) return;
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${editTarget.id}`, {
+      const response = await authFetch(apiUrl(`/api/service-device-assignments/${editTarget.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -974,7 +975,7 @@ export function ServicesModule({
 
       const novaData = editDraft.installedOn;
       if (novaData && novaData !== (editTarget.startDate || '').slice(0, 10)) {
-        const datas = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${editTarget.id}/dates`, {
+        const datas = await authFetch(apiUrl(`/api/service-device-assignments/${editTarget.id}/dates`), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ startDate: novaData })
@@ -1013,7 +1014,7 @@ export function ServicesModule({
     if (!selectedService) return;
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/technical-events`, {
+      const response = await authFetch(apiUrl(`/api/services/${selectedService.id}/technical-events`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1051,7 +1052,7 @@ export function ServicesModule({
       return;
     }
 
-    const url = editingService ? `http://127.0.0.1:3001/api/services/${editingService.id}` : 'http://127.0.0.1:3001/api/services';
+    const url = editingService ? apiUrl(`/api/services/${editingService.id}`) : apiUrl('/api/services');
     const response = await authFetch(url, {
       method: editingService ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },

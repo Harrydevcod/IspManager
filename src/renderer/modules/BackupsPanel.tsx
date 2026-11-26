@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Archive, FolderOpen, FolderSearch, HardDriveDownload, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, EmptyState, Field, Message, Select, SkeletonList, useConfirm } from '../components';
@@ -56,7 +57,7 @@ export function BackupsPanel() {
 
   async function load() {
     try {
-      const res = await authFetch('http://127.0.0.1:3001/api/backups');
+      const res = await authFetch(apiUrl('/api/backups'));
       const data = await res.json();
       setEntries(data.entries);
       setBackupDir(data.backupDir);
@@ -75,7 +76,7 @@ export function BackupsPanel() {
     setSavingConfig(true);
     setMessage(null);
     try {
-      const res = await authFetch('http://127.0.0.1:3001/api/backups/config', {
+      const res = await authFetch(apiUrl('/api/backups/config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backupDir: dirInput.trim(), intervalHours: Number(intervalInput) || 0 })
@@ -104,7 +105,7 @@ export function BackupsPanel() {
     setBusy(true);
     setMessage(null);
     try {
-      await authFetch('http://127.0.0.1:3001/api/backups', { method: 'POST' });
+      await authFetch(apiUrl('/api/backups'), { method: 'POST' });
       await load();
       setMessage({ text: 'Backup criado.', tone: 'success' });
     } finally {
@@ -130,7 +131,7 @@ export function BackupsPanel() {
     setBusy(true);
     setMessage(null);
     try {
-      const res = await authFetch('http://127.0.0.1:3001/api/backups/import', {
+      const res = await authFetch(apiUrl('/api/backups/import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: picked })
@@ -154,7 +155,7 @@ export function BackupsPanel() {
     setBusy(true);
     setMessage(null);
     try {
-      const res = await authFetch('http://127.0.0.1:3001/api/backups/restore', {
+      const res = await authFetch(apiUrl('/api/backups/restore'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file })

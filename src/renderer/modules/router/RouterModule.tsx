@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { AlertTriangle, ArrowLeftRight, Info, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History, Tv } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -179,7 +180,7 @@ export default function RouterModule() {
   const log = useLive<Live<RouterLog>>(`${ROUTER_API}/log`, tab === 'log');
   const consumption = useLive<ClientUsageRow[]>(`${ROUTER_API}/clients/usage`, tab === 'consumption', 60_000);
   const consumptionFup = useLive<ClientUsageFup>(`${FUP_API}/usage`, tab === 'consumption', 60_000);
-  const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
+  const plans = useLive<PlanRow[]>(apiUrl('/api/plans'), tab === 'profiles');
 
   const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
   // IPTV: o estado vem da base (lê-se fora da rede); a infraestrutura lê o router, só para o admin.
@@ -189,7 +190,7 @@ export default function RouterModule() {
   const iptvInfra = useLive<IptvCheck[]>(`${IPTV_API}/infra`, tab === 'iptv' && isAdmin, 60_000);
   const iptvTunnels = useLive<IptvTunnels>(`${IPTV_API}/tunnels`, tab === 'iptv' && isAdmin, 60_000);
   const iptvProviders = useLive<IptvProvider[]>(`${IPTV_API}/providers`, tab === 'iptv', 120_000);
-  const iptvServices = useLive<ServiceRow[]>('http://127.0.0.1:3001/api/services', tab === 'iptv', 120_000);
+  const iptvServices = useLive<ServiceRow[]>(apiUrl('/api/services'), tab === 'iptv', 120_000);
   const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, iptv: iptvStatus, backups, log, config: null }[tab];
 
   const selectTab = useCallback((next: RouterTab) => {

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { sameModel } from '../../../shared/model-match';
@@ -111,7 +112,7 @@ export function BackboneEditorDialog({
 }: EditorProps) {
   const [form, setForm] = useState<EditorState>(() => editorState(backbone, prefill, catalogs));
   const [validation, setValidation] = useState<string | null>(null);
-  const routerLive = useLive<TopologyLive>('http://127.0.0.1:3001/api/topology/live', open, 5_000);
+  const routerLive = useLive<TopologyLive>(apiUrl('/api/topology/live'), open, 5_000);
   const routerInterfaces = routerLive.data?.available ? routerLive.data.interfaces : null;
   const routerDeviceId = routerLive.data?.routerDeviceId;
   const hasRouterUpstream = routerDeviceId != null && form.upstreamDeviceIds.includes(routerDeviceId);

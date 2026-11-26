@@ -81,3 +81,21 @@ describe('printAuthenticated', () => {
     expect(Array.from(printDocument.mock.calls[0][0] as Uint8Array)).toEqual([80, 68, 70]);
   });
 });
+
+describe('operações de documentos no Android', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockedAuthFetch.mockClear();
+    vi.stubGlobal('window', { location: { origin: 'https://appassets.androidplatform.net' } });
+  });
+
+  test('informa que guardar ainda não está disponível sem afirmar sucesso', async () => {
+    await expect(downloadAuthenticated('/invoice.pdf', 'fatura.pdf')).rejects.toThrow('Guardar ficheiros ainda não está disponível no telemóvel');
+    expect(mockedAuthFetch).not.toHaveBeenCalled();
+  });
+
+  test('informa que imprimir ainda não está disponível sem afirmar sucesso', async () => {
+    await expect(printAuthenticated('/invoice.pdf')).rejects.toThrow('Imprimir ainda não está disponível no telemóvel');
+    expect(mockedAuthFetch).not.toHaveBeenCalled();
+  });
+});

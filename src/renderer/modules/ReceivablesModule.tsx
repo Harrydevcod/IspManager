@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Clock, Users, Wallet } from 'lucide-react';
 import {
@@ -107,7 +108,7 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/receivables');
+      const response = await authFetch(apiUrl('/api/receivables'));
       if (!response.ok) {
         setLoadError('Nao foi possivel carregar os pendentes.');
         return;

@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Check, Smartphone, X } from 'lucide-react';
 import { Button, Message } from '../../components';
@@ -19,7 +20,7 @@ export type ReceiptProposal = {
   target: { paymentId: number; dueDate: string; balanceCve: number } | null;
 };
 
-const ENDPOINT = 'http://127.0.0.1:3001/api/companion/receipt-proposals';
+const ENDPOINT = apiUrl('/api/companion/receipt-proposals');
 const METHOD_LABEL = { numerario: 'Numerário', transferencia: 'Transferência' } as const;
 const when = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 

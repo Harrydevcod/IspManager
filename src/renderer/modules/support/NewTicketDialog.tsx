@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Button, Combobox, Dialog, Field, Message, Select, Textarea } from '../../components';
@@ -42,8 +43,8 @@ export function NewTicketDialog({ open, clientId, onClose, onCreated }: {
     setError(null);
     let alive = true;
     void Promise.all([
-      clientId ? Promise.resolve([] as Client[]) : authFetch('http://127.0.0.1:3001/api/clients').then((r) => r.json() as Promise<Client[]>),
-      authFetch('http://127.0.0.1:3001/api/services').then((r) => r.json() as Promise<ServiceRow[]>)
+      clientId ? Promise.resolve([] as Client[]) : authFetch(apiUrl('/api/clients')).then((r) => r.json() as Promise<Client[]>),
+      authFetch(apiUrl('/api/services')).then((r) => r.json() as Promise<ServiceRow[]>)
     ]).then(([clientRows, serviceRows]) => {
       if (!alive) return;
       setClients(clientRows);

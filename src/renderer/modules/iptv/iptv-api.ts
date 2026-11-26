@@ -1,9 +1,10 @@
+import { apiUrl } from '../../lib/api';
 import { authFetch } from '../../lib/auth';
 
 // IPTV via VPN (ADR 0021). Espelho dos tipos de `backend/lib/iptv*.ts`: o renderer
 // não importa do backend.
 
-export const IPTV_API = 'http://127.0.0.1:3001/api/iptv';
+export const IPTV_API = apiUrl('/api/iptv');
 
 export type IptvLegacy = { mac: string; via: 'antena' | 'router' | 'aparelho' };
 export type IptvSource =

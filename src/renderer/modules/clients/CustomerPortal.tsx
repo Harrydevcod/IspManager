@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Link2 } from 'lucide-react';
 import { Badge, Button, Field, Message } from '../../components';
@@ -5,7 +6,7 @@ import { authFetch } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 
 type Link = { id: string; expiresAt: number; publishedAt: string | null; revokedAt: string | null };
-const api = 'http://127.0.0.1:3001/api';
+const api = apiUrl('/api');
 
 /** Links da área do cliente: um instantâneo cifrado da conta, válido 24 h, servido pelo relé. */
 export function CustomerPortal({ clientId }: { clientId: number }) {

@@ -82,7 +82,8 @@ fun CompanionApp(
   onResendAllFailed: () -> Unit = {},
   onNotificationRead: (NotificationEntry) -> Unit = {},
   onNotificationsSeen: () -> Unit = {},
-  onMarkAllNotificationsRead: () -> Unit = {}
+  onMarkAllNotificationsRead: () -> Unit = {},
+  onOpenErp: () -> Unit = {}
 ) {
   Box(Modifier.fillMaxSize().background(Bg)) {
     // Re-pairing from a paired phone goes through "Esquecer e parear de novo"; the code can't show otherwise.
@@ -98,7 +99,7 @@ fun CompanionApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
         onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange,
         pendingEvents, onFieldEvent, onRejectAll, onSync, themePref, onThemeChange, onToggleTheme, initialTab,
-        onResend, onResendAllFailed, onNotificationRead, onNotificationsSeen, onMarkAllNotificationsRead
+        onResend, onResendAllFailed, onNotificationRead, onNotificationsSeen, onMarkAllNotificationsRead, onOpenErp
       )
     }
   }
@@ -130,7 +131,8 @@ private fun PairedApp(
   onResendAllFailed: () -> Unit = {},
   onNotificationRead: (NotificationEntry) -> Unit = {},
   onNotificationsSeen: () -> Unit = {},
-  onMarkAllNotificationsRead: () -> Unit = {}
+  onMarkAllNotificationsRead: () -> Unit = {},
+  onOpenErp: () -> Unit = {}
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(initialTab ?: if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
@@ -189,7 +191,7 @@ private fun PairedApp(
         Tab.HISTORICO -> HistoryScreen(state, onResend)
         Tab.DEFINICOES -> SettingsScreen(
           state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing,
-          onLockEnabledChange, themePref, onThemeChange
+          onLockEnabledChange, themePref, onThemeChange, onOpenErp
         )
       }
     }

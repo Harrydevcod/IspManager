@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -260,7 +261,7 @@ export function InvestmentsModule() {
 
   // Modelos do catalogo, para o item do investimento poder apontar para um deles.
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/stock/summary')
+    authFetch(apiUrl('/api/stock/summary'))
       .then((response) => response.ok ? response.json() as Promise<{ rows: StockCatalogRow[] }> : null)
       .then((payload) => setCatalog(payload?.rows ?? []))
       .catch(() => setCatalog([]));
@@ -305,7 +306,7 @@ export function InvestmentsModule() {
     const params = new URLSearchParams();
     if (!showAllMonths) params.set('month', month);
     if (type !== 'all') params.set('type', type);
-    return authFetch(`http://127.0.0.1:3001/api/investments?${params}`)
+    return authFetch(apiUrl(`/api/investments?${params}`))
       .then((response) => response.json() as Promise<InvestmentList>)
       .then((payload) => {
         setData(payload);
@@ -323,7 +324,7 @@ export function InvestmentsModule() {
   }, [load]);
 
   useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/clients')
+    authFetch(apiUrl('/api/clients'))
       .then((response) => response.ok ? response.json() as Promise<Client[]> : [])
       .then(setClients)
       .catch(() => setClients([]));
@@ -335,7 +336,7 @@ export function InvestmentsModule() {
       return;
     }
     let cancelled = false;
-    authFetch(`http://127.0.0.1:3001/api/investments/${selected.id}/timeline`)
+    authFetch(apiUrl(`/api/investments/${selected.id}/timeline`))
       .then((r) => r.ok ? r.json() as Promise<InvestmentTimeline> : null)
       .then((data) => { if (!cancelled) setTimeline(data); })
       .catch(() => { if (!cancelled) setTimeline(null); });
@@ -428,8 +429,8 @@ export function InvestmentsModule() {
 
     setSubmitting(true);
     const url = editing
-      ? `http://127.0.0.1:3001/api/investments/${editing.id}`
-      : 'http://127.0.0.1:3001/api/investments';
+      ? apiUrl(`/api/investments/${editing.id}`)
+      : apiUrl('/api/investments');
     try {
       const response = await authFetch(url, {
         method: editing ? 'PUT' : 'POST',
@@ -486,7 +487,7 @@ export function InvestmentsModule() {
       tone: 'danger',
       confirmLabel: 'Apagar'
     }))) return;
-    const response = await authFetch(`http://127.0.0.1:3001/api/investments/${investment.id}`, { method: 'DELETE' });
+    const response = await authFetch(apiUrl(`/api/investments/${investment.id}`), { method: 'DELETE' });
     if (!response.ok) {
       const result = await response.json().catch(() => ({})) as { error?: string };
       toast(result.error || 'Falha ao apagar investimento.', 'error');

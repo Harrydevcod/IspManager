@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, EmptyState, Message } from '../components';
@@ -67,7 +68,7 @@ export function JobHealthPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch('http://127.0.0.1:3001/api/jobs/health');
+      const res = await authFetch(apiUrl('/api/jobs/health'));
       if (!res.ok) throw new Error();
       const data = await res.json() as { jobs: JobHealthEntry[] };
       setJobs(data.jobs);

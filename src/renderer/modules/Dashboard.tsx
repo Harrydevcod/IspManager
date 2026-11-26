@@ -1,3 +1,4 @@
+import { apiUrl } from '../lib/api';
 import { Activity, AlertTriangle, CalendarClock, CheckCircle2, MessageCircle, ShieldCheck, TrendingUp, UsersRound, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Badge, Button, Card, EmptyState, ErrorRetry, MetricCard, MetricGrid, NotificationBell, RevenueBars, Skeleton, useNotifications } from '../components';
@@ -48,7 +49,7 @@ export function Dashboard({
   const bell = useNotifications();
 
   const loadSummary = useCallback(() => {
-    return authFetch('http://127.0.0.1:3001/api/dashboard/summary')
+    return authFetch(apiUrl('/api/dashboard/summary'))
       .then((response) => {
         if (!response.ok) throw new Error('Nao foi possivel carregar o dashboard');
         return response.json() as Promise<DashboardSummary>;

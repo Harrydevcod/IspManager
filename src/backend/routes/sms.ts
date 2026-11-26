@@ -19,6 +19,7 @@ import { describePayments, describeReceipt } from '../lib/payment-description';
 import { smsChannelActive, smsTemplateFor } from '../lib/sms-notices';
 import { fallbackSmsGeneralTemplate } from '../../shared/sms';
 import { cancelPairingSession, confirmPairingSession, readPairingSession, startPairingSession } from '../lib/sms-pairing';
+import { forgetMobileDevice } from '../lib/mobile-device-enrollment';
 
 const paymentSmsSchema = z.object({
   eventType: z.enum(['invoice_issued', 'receipt_confirmed', 'payment_overdue', 'suspension_notice'])
@@ -58,7 +59,7 @@ function setSetting(key: string, value: string) {
 }
 
 
-export async function registerSmsRoutes(app: FastifyInstance) {
+export async function registerSmsRoutes(app: FastifyInstance, stopMobileGateway: () => Promise<void> = async () => {}) {
   const adminOnly = { preHandler: requireRole(['admin']) };
   const canSend = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -260,6 +261,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     }
     const result = await confirmPairingSession();
     if (!result.ok) return reply.status(result.status).send({ error: result.error });
+    await stopMobileGateway();
+    forgetMobileDevice(getSqliteDatabase());
     const { baseUrl, secret, model } = result.found;
     setSetting('smsCompanionEnabled', 'true');
     setSetting('smsCompanionBaseUrl', baseUrl);
@@ -283,6 +286,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
 
   app.delete('/api/sms/pairing', adminOnly, async () => {
     cancelPairingSession();
+    await stopMobileGateway();
+    forgetMobileDevice(getSqliteDatabase());
     setSetting('smsCompanionEnabled', 'false');
     setSetting('smsCompanionPairingVersion', '');
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', '');

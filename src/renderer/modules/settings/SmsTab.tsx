@@ -1,6 +1,7 @@
 import { Check, QrCode, RefreshCw, RotateCcw, Unlink, Wifi } from 'lucide-react';
 import { SmsInbox } from './SmsInbox';
 import { SmsRelayPanel } from './SmsRelayPanel';
+import { MobileAccessPanel } from './MobileAccessPanel';
 import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
 import { TemplateField } from './TemplateField';
@@ -23,6 +24,7 @@ import { describeSmsPairing, describeSmsPresence, type SmsPairingSession } from 
 export type SmsPairingScreen = SmsPairingSession & { qrDataUrl: string; sas?: string };
 
 type SmsTabProps = {
+  canManageMobile?: boolean;
   form: SettingsFormState;
   onUpdate: UpdateField;
   onToggle: ToggleField;
@@ -48,6 +50,7 @@ type SmsTabProps = {
 };
 
 export function SmsTab({
+  canManageMobile = false,
   form,
   onUpdate,
   onToggle,
@@ -167,6 +170,7 @@ export function SmsTab({
         )}
       </div>
       <SmsRelayPanel />
+      {canManageMobile && <MobileAccessPanel />}
       <SmsInbox />
       <section className="sms-delivery-report" aria-labelledby="sms-delivery-report-title">
         <div className="sms-delivery-report-head">

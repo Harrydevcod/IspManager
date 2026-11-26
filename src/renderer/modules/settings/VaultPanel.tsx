@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState, type FormEvent } from 'react';
 import { announceVaultChanged, Button, Field, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -17,7 +18,7 @@ export function VaultPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    void authFetch('http://127.0.0.1:3001/api/vault/status')
+    void authFetch(apiUrl('/api/vault/status'))
       .then(async (response) => {
         if (!response.ok) throw new Error('Estado indisponível.');
         return response.json() as Promise<{ status: VaultState; migrationError?: string }>;
@@ -31,7 +32,7 @@ export function VaultPanel() {
     setBusy(true);
     setError('');
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/vault/${endpoint}`, {
+      const response = await authFetch(apiUrl(`/api/vault/${endpoint}`), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
       const result = await response.json() as { error?: string; recoveryKey?: string; status?: VaultState; migrationError?: string };

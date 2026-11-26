@@ -42,6 +42,8 @@ android {
     compose = true
   }
 
+  sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/ispmAssets"))
+
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
@@ -52,7 +54,24 @@ android {
   }
 }
 
+// The mobile app serves this exact build locally; it never downloads executable UI code.
+val buildMobileRenderer by tasks.registering(Exec::class) {
+  val repository = rootProject.projectDir.parentFile
+  val output = layout.buildDirectory.dir("generated/ispmAssets/ispm")
+  workingDir(repository)
+  commandLine("node", "scripts/mobile-renderer-security.cjs", output.get().asFile.absolutePath)
+  inputs.dir(File(repository, "src/renderer"))
+  inputs.dir(File(repository, "src/shared"))
+  inputs.file(File(repository, "vite.config.mts"))
+  inputs.file(File(repository, "package.json"))
+  inputs.file(File(repository, "package-lock.json"))
+  inputs.file(File(repository, "scripts/mobile-renderer-security.cjs"))
+  outputs.dir(output)
+}
+tasks.named("preBuild") { dependsOn(buildMobileRenderer) }
+
 dependencies {
+  implementation("androidx.webkit:webkit:1.12.1")
   implementation("androidx.core:core-ktx:1.13.1")
   // Fingerprint or the phone PIN to open the app; brings androidx.fragment (FragmentActivity).
   implementation("androidx.biometric:biometric:1.1.0")
@@ -66,6 +85,7 @@ dependencies {
   implementation("com.google.android.material:material:1.12.0")
   implementation("com.journeyapps:zxing-android-embedded:4.3.0")
   implementation("org.nanohttpd:nanohttpd:2.3.1")
+  implementation("com.squareup.okhttp3:okhttp:4.12.0")
   testImplementation("junit:junit:4.13.2")
   // Real org.json on the JVM test classpath (android.jar only ships stubs).
   testImplementation("org.json:json:20240303")

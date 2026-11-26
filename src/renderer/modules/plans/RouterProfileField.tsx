@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Button, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
@@ -30,7 +31,7 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
   const [message, setMessage] = useState<string | null>(null);
 
   function loadProfiles() {
-    return authFetch('http://127.0.0.1:3001/api/network/router/profiles')
+    return authFetch(apiUrl('/api/network/router/profiles'))
       .then((response) => response.json() as Promise<ProfilesResponse>)
       .then(setRouter)
       .catch(() => setRouter({ available: false, reason: 'Não foi possível ler os perfis do router.', baseProfile: 'default', profiles: [] }));
@@ -62,7 +63,7 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
     setBusy(true);
     setMessage(null);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/plans/${savedPlan.id}/router-profile`, { method: 'POST' });
+      const response = await authFetch(apiUrl(`/api/plans/${savedPlan.id}/router-profile`), { method: 'POST' });
       const body = (await response.json()) as ApplyResponse & { error?: string };
       if (!response.ok) {
         setMessage(body.error ?? 'O router recusou o pedido.');

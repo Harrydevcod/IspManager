@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { MessageSquareText, WalletCards } from 'lucide-react';
 import { Badge, Button, Card, DataTable, useToast, type DataTableColumn } from '../../components';
@@ -8,7 +9,7 @@ import { ClientFinanceDialog } from './ClientFinanceDialog';
 import { businessDay } from '../../../shared/business-day';
 import { SUSPENSION_NOTICE_LEAD_DAYS, type NoticeDelivery, type UpcomingSuspension } from '../../../shared/upcoming-suspension';
 
-const API = 'http://127.0.0.1:3001/api';
+const API = apiUrl('/api');
 export const UPCOMING_SUSPENSIONS_URL = `${API}/finance/upcoming-suspensions`;
 const POLL_MS = 5 * 60_000;
 

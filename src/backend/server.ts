@@ -33,6 +33,7 @@ import { registerTechnicalRoutes } from './routes/technical';
 import { registerStockRoutes } from './routes/stock';
 import { registerWhatsappRoutes } from './routes/whatsapp';
 import { registerSmsRoutes } from './routes/sms';
+import { registerMobileAccessRoutes } from './routes/mobile-access';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerSupportTicketRoutes } from './routes/support-tickets';
 import { registerBackupRoutes } from './routes/backup';
@@ -224,7 +225,8 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerReportRoutes(app);
   await registerSettingsRoutes(app);
   await registerWhatsappRoutes(app);
-  await registerSmsRoutes(app);
+  const mobileGateway = await registerMobileAccessRoutes(app);
+  await registerSmsRoutes(app, () => mobileGateway.stop());
   await registerWorkOrderRoutes(app);
   await registerSupportTicketRoutes(app);
   await registerBackupRoutes(app);

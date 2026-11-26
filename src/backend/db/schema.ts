@@ -1,6 +1,16 @@
 import { blob, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
+export const smsInboxArchive = sqliteTable('sms_inbox_archive', {
+  id: integer('id').primaryKey(),
+  eventId: text('event_id').notNull().unique(),
+  clientId: integer('client_id'),
+  phone: text('phone').notNull(),
+  body: text('body').notNull(),
+  receivedAt: text('received_at').notNull(),
+  readAt: text('read_at'),
+});
+
 export const proposals = sqliteTable('proposals', {
   documentType: text('document_type', { enum: ['proposal','quotation','proforma'] }).notNull().default('proposal'),
   paymentRequestJson: text('payment_request_json'),

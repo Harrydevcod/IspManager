@@ -1,3 +1,4 @@
+import { apiUrl } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import { Button } from '../../components';
@@ -6,7 +7,7 @@ import { useAuthenticatedObjectUrl } from '../../lib/download';
 
 type Attachment = { id: number; kind: 'photo' | 'location'; lat: number | null; lon: number | null; takenAt: string | null };
 
-const API = 'http://127.0.0.1:3001/api/work-orders';
+const API = apiUrl('/api/work-orders');
 
 function Photo({ orderId, id }: { orderId: number; id: number }) {
   const { objectUrl } = useAuthenticatedObjectUrl(`${API}/${orderId}/attachments/${id}`);

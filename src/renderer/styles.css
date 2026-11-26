@@ -7153,6 +7153,16 @@ button.danger:disabled {
 .sms-relay-panel { grid-column: 1 / -1; justify-items: center; text-align: center; }
 .sms-relay-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); width: 100%; text-align: start; }
 .sms-relay-fields .field { flex: 0 1 20rem; min-width: 0; }
+
+.mobile-access-fields .field:nth-child(2) { flex-basis: 8rem; }
+/* Empilhados, os três campos ocupam a mesma coluna. */
+@media (max-width: 640px) { .mobile-access-fields .field:nth-child(2) { flex-basis: 20rem; } }
+@container (min-width: 700px) {
+  .mobile-access-fields { grid-template-columns: minmax(0, 1fr) minmax(6rem, .45fr) minmax(0, 1fr) auto; }
+}
+@media (max-width: 600px) {
+  .sidebar { position: static; }
+}
 /* Estado do pareamento: a cor reforça, o texto já diz tudo. */
 .sms-pairing-state { color: var(--text-2); max-width: 80ch; }
 .sms-pairing-state[data-tone='success'] { color: var(--success); }

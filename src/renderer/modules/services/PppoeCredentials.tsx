@@ -1,10 +1,11 @@
+import { apiUrl } from '../../lib/api';
 import { Eye, Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Message, Select, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { downloadAuthenticated, printAuthenticated } from '../../lib/download';
 
-const API = 'http://127.0.0.1:3001/api/services';
+const API = apiUrl('/api/services');
 
 async function post<T>(path: string, body: unknown): Promise<{ ok: boolean; body: T & { error?: string } }> {
   const response = await authFetch(`${API}/${path}`, {
