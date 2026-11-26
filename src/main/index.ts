@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, safeStorage, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -447,6 +447,13 @@ app.whenReady().then(async () => {
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
     await shell.openExternal(parsed.toString());
+    return true;
+  });
+
+  // Só texto curto (credenciais, códigos); o valor nunca vai para logs.
+  ipcMain.handle('clipboard:write-text', (_event, text: unknown) => {
+    if (typeof text !== 'string' || text.length > 4096) return false;
+    clipboard.writeText(text);
     return true;
   });
 

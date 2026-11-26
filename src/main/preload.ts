@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('ispm', {
   // Abre a interface web de um equipamento no browser do sistema. O esquema é
   // validado do lado do main — ver `shell:open-external`.
   openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('shell:open-external', url),
+  // Recurso quando navigator.clipboard falha; o preload em sandbox não tem `clipboard`.
+  copyText: (text: string): Promise<boolean> => ipcRenderer.invoke('clipboard:write-text', text),
   saveDocument: (
     filename: string,
     data: Uint8Array

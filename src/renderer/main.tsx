@@ -4,6 +4,7 @@ import { App } from './App';
 import { reportReactError } from './lib/error-reports';
 import { initializeMobileTransport, type MobileBridge } from './lib/mobileBootstrap';
 import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './styles.css';
 
 initializeMobileTransport(window.location.origin, (window as Window & {ispmMobile?: MobileBridge}).ispmMobile);

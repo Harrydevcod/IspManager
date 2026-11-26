@@ -22,6 +22,7 @@ declare global {
       chooseBackupDir?: () => Promise<string | null>;
       openBackupDir?: (dir: string) => Promise<void>;
       openExternal?: (url: string) => Promise<boolean>;
+      copyText?: (text: string) => Promise<boolean>;
       saveDocument?: (
         filename: string,
         data: Uint8Array
