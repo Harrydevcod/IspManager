@@ -103,6 +103,11 @@ describe('mobile gateway and real backend', () => {
         expect(wrongPassword.statusCode).toBe(403);
         const afterFailure = await app.inject({method:'GET', url:'/api/mobile-access', headers:{authorization:`Bearer ${login.body.token}`}});
         expect(afterFailure.json().running).toBe(false);
+        db.prepare("UPDATE app_settings SET value = '' WHERE key = 'smsCompanionBaseUrl'").run();
+        const unpaired = await app.inject({method:'POST', url:'/api/mobile-access/start', headers:{authorization:`Bearer ${login.body.token}`}, payload:{host:localAddress, port:38421, confirmPassword:'supersecret'}});
+        expect(unpaired.statusCode).toBe(409);
+        expect(unpaired.json().error).toBe('Pareie primeiro o telemóvel com a app ISPM SMS.');
+        db.prepare("UPDATE app_settings SET value = 'http://192.168.1.20:8765' WHERE key = 'smsCompanionBaseUrl'").run();
       }
       const audit = db.prepare("SELECT metadata_json FROM audit_logs WHERE action = 'login_success' AND summary = 'admin' ORDER BY id DESC LIMIT 1").get() as {metadata_json:string};
       expect(JSON.parse(audit.metadata_json).ip).toBe('127.0.0.1');

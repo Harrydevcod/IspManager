@@ -58,6 +58,8 @@ export function createPairedMobileGateway(app: FastifyInstance, db: Database.Dat
 /** Prepare an inactive gateway and publish its address only after it binds. */
 export async function preparePairedMobileGateway(app: FastifyInstance, db: Database.Database, protection: LocalProtection, requestProof: ProofRequest = requestMobileDeviceProof, sendIdentity: IdentityRequest = sendDesktopIdentity) {
   if (authBypassed() || !isSetupComplete()) throw new Error('MOBILE_AUTH_REQUIRED');
+  const pairing = readSmsPairing(db);
+  if (pairing.version !== 2 || !pairing.secret || !setting(db, 'smsCompanionBaseUrl')) throw new Error('MOBILE_V2_PAIRING_REQUIRED');
   const identity = await loadMobileTlsIdentity(db, protection);
   await enrollPairedMobileDevice(db, protection, requestProof);
   if (authBypassed() || !isSetupComplete()) throw new Error('MOBILE_AUTH_REQUIRED');
