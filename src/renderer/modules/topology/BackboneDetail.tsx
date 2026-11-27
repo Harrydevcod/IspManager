@@ -21,6 +21,7 @@ import type {
 import { useState } from 'react';
 import { Badge, Button, Field } from '../../components';
 import { MaintenanceNoticeDialog } from './MaintenanceNoticeDialog';
+import { PlannedRebootButton, SitePicker } from './OutageControls';
 import { statusLabel, statusTone } from '../../lib/status';
 
 const STATUS_LABEL: Record<BackboneStatus, string> = {
@@ -160,6 +161,7 @@ export function BackboneDetail({
                 Avisar manutenção
               </Button>
             )}
+            {backbone.status !== 'retired' && <PlannedRebootButton deviceId={backbone.id} />}
           </>
         )}
       </div>
@@ -195,6 +197,11 @@ export function BackboneDetail({
             </div>
             <div><dt>Ilha</dt><dd>{fact(backbone.island)}</dd></div>
             <div><dt>Zona</dt><dd>{fact(backbone.zone)}</dd></div>
+            {canManage ? (
+              <div className="backbone-fact-wide"><SitePicker deviceId={backbone.id} siteId={backbone.siteId ?? null} canManage /></div>
+            ) : (
+              <div><dt>Local</dt><dd><SitePicker deviceId={backbone.id} siteId={backbone.siteId ?? null} canManage={false} /></dd></div>
+            )}
             <div className="backbone-fact-wide"><dt>Notas</dt><dd>{fact(backbone.notes)}</dd></div>
           </dl>
         </section>

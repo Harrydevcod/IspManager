@@ -4,6 +4,9 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
+import { activePlannedReboots, cancelPlannedReboot, setOperatorCause, startPlannedReboot } from '../lib/outage-cause';
+import { snmpUptime } from '../lib/device-model';
+import { readSecret } from '../lib/secrets';
 import { readLog, type LogLookups } from '../lib/router-log-reading';
 import { importJournalHistory, installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/router-log-watch';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
@@ -206,6 +209,92 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Parametros invalidos' });
     }
     return loadNetworkHealth(getSqliteDatabase(), parsed.data.hours);
+  });
+
+  // ---- causa das quedas: reinício, energia, ligação
+  app.put('/api/network/outages/:deviceId/cause', networkWrite, async (request, reply) => {
+    const params = z.object({ deviceId: z.coerce.number().int().positive() }).safeParse(request.params);
+    const body = z.object({
+      startedAt: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+      cause: z.enum(['reboot', 'power', 'link']).nullable()
+    }).strict().safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ error: 'Dados inválidos' });
+    const db = getSqliteDatabase();
+    if (!db.prepare('SELECT 1 FROM backbone_devices WHERE id = ?').get(params.data.deviceId)) return reply.status(404).send({ error: 'Equipamento não encontrado' });
+    setOperatorCause(db, params.data.deviceId, body.data.startedAt, body.data.cause, request.user?.id ?? null);
+    recordAudit(request, {
+      action: 'update', entityType: 'network_outage', entityId: params.data.deviceId,
+      summary: body.data.cause ? `Marcou a queda de ${body.data.startedAt} como ${body.data.cause}` : `Devolveu a causa da queda de ${body.data.startedAt} à prova automática`,
+      metadata: { startedAt: body.data.startedAt, cause: body.data.cause }
+    });
+    return { ok: true };
+  });
+
+  app.get('/api/network/planned-reboots', readOnly, async () =>
+    Object.fromEntries(activePlannedReboots(getSqliteDatabase())));
+
+  app.post('/api/network/planned-reboots/:deviceId', networkWrite, async (request, reply) => {
+    const params = z.object({ deviceId: z.coerce.number().int().positive() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Dados inválidos' });
+    const db = getSqliteDatabase();
+    const device = db.prepare("SELECT name FROM backbone_devices WHERE id = ? AND status <> 'retired'").get(params.data.deviceId) as { name: string } | undefined;
+    if (!device) return reply.status(404).send({ error: 'Equipamento não encontrado' });
+    const window = startPlannedReboot(db, params.data.deviceId, request.user?.id ?? null);
+    recordAudit(request, {
+      action: 'create', entityType: 'planned_reboot', entityId: params.data.deviceId,
+      summary: `Vai reiniciar ${device.name}`, metadata: window
+    });
+    return reply.status(201).send(window);
+  });
+
+  app.delete('/api/network/planned-reboots/:deviceId', networkWrite, async (request, reply) => {
+    const params = z.object({ deviceId: z.coerce.number().int().positive() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Dados inválidos' });
+    cancelPlannedReboot(getSqliteDatabase(), params.data.deviceId);
+    recordAudit(request, { action: 'delete', entityType: 'planned_reboot', entityId: params.data.deviceId, summary: 'Cancelou o reinício programado' });
+    return { ok: true };
+  });
+
+  // ---- locais (torre, poste, casa)
+  app.get('/api/network/sites', readOnly, async () =>
+    getSqliteDatabase().prepare('SELECT id, name FROM network_sites ORDER BY name COLLATE NOCASE').all());
+
+  app.post('/api/network/sites', networkWrite, async (request, reply) => {
+    const body = z.object({ name: z.string().trim().min(1).max(80) }).strict().safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ error: 'Escreva o nome do local' });
+    const db = getSqliteDatabase();
+    const existing = db.prepare('SELECT id, name FROM network_sites WHERE name = ? COLLATE NOCASE').get(body.data.name) as { id: number; name: string } | undefined;
+    if (existing) return existing;
+    const id = Number(db.prepare('INSERT INTO network_sites (name) VALUES (?)').run(body.data.name).lastInsertRowid);
+    recordAudit(request, { action: 'create', entityType: 'network_site', entityId: id, summary: `Criou o local ${body.data.name}` });
+    return reply.status(201).send({ id, name: body.data.name });
+  });
+
+  app.put('/api/network/sites/device/:deviceId', networkWrite, async (request, reply) => {
+    const params = z.object({ deviceId: z.coerce.number().int().positive() }).safeParse(request.params);
+    const body = z.object({ siteId: z.number().int().positive().nullable() }).strict().safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ error: 'Dados inválidos' });
+    const db = getSqliteDatabase();
+    if (body.data.siteId !== null && !db.prepare('SELECT 1 FROM network_sites WHERE id = ?').get(body.data.siteId)) return reply.status(404).send({ error: 'Local não encontrado' });
+    const result = db.prepare('UPDATE backbone_devices SET site_id = ? WHERE id = ?').run(body.data.siteId, params.data.deviceId);
+    if (result.changes === 0) return reply.status(404).send({ error: 'Equipamento não encontrado' });
+    recordAudit(request, { action: 'update', entityType: 'backbone_device', entityId: params.data.deviceId, summary: 'Mudou o local do equipamento', metadata: { siteId: body.data.siteId } });
+    return { ok: true };
+  });
+
+  // ---- SNMP: testar a comunidade nas antenas do backbone, sem a gravar
+  app.post('/api/network/snmp-test', adminOnly, async (request, reply) => {
+    const body = z.object({ community: z.string().max(64).optional() }).strict().safeParse(request.body ?? {});
+    if (!body.success) return reply.status(400).send({ error: 'Dados inválidos' });
+    const db = getSqliteDatabase();
+    const community = body.data.community?.trim() || readSecret(db, 'networkSnmpCommunity');
+    if (!community) return reply.status(400).send({ error: 'Escreva a comunidade SNMP' });
+    const devices = db.prepare(`
+      SELECT id, name, ip_address AS ipAddress FROM backbone_devices
+      WHERE status IN ('active','maintenance') AND ip_address IS NOT NULL AND TRIM(ip_address) <> '' ORDER BY name
+    `).all() as Array<{ id: number; name: string; ipAddress: string }>;
+    const uptimes = await mapWithLimit(devices, 8, (device) => snmpUptime(device.ipAddress, community));
+    return devices.map((device, index) => ({ ...device, uptimeSeconds: uptimes[index] }));
   });
 
   // O diário de ocorrências: qualquer sessão lê, quem opera a rede escreve.

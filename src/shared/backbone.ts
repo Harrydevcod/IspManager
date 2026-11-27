@@ -25,6 +25,8 @@ export type BackboneDeviceSummary = {
   operationMode: string | null;
   island: string | null;
   zone: string | null;
+  /** Local físico (torre, poste): vários do mesmo local a reiniciar juntos é corte de energia. */
+  siteId?: number | null;
   provisional: boolean;
   /**
    * De quem esta unidade recebe sinal. Vazio = alimentada pela Internet; mais

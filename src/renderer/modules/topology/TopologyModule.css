@@ -751,6 +751,42 @@
 .incidents-kind[data-tone='danger']::before { background: var(--danger); }
 .incidents-kind[data-tone='warn']::before { background: var(--warn); }
 
+/* A causa da queda: o mesmo ponto de gravidade; o ícone diz que foi o operador a escolher. */
+.incidents-cause {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.incidents-cause::before {
+  content: '';
+  flex: none;
+  width: var(--space-1-5);
+  height: var(--space-1-5);
+  border-radius: var(--rpill);
+  background: var(--text-3);
+}
+.incidents-cause[data-tone='danger']::before { background: var(--danger); }
+.incidents-cause[data-tone='warn']::before { background: var(--warn); }
+.incidents-cause[data-tone='info']::before { background: var(--accent); }
+.incidents-cause svg { flex: none; color: var(--text-3); }
+
+/* Local do equipamento: escolhe-se da lista; um novo escreve-se na mesma linha. */
+.site-picker { display: grid; gap: var(--space-2); max-width: 22rem; }
+.site-picker-new { display: flex; align-items: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.site-picker-new .field { flex: 1 1 12rem; }
+
+/* "Vou reiniciar" ativo: o estado e o cancelar lado a lado, à altura dos outros botões. */
+.planned-reboot { display: inline-flex; align-items: center; gap: var(--space-2); }
+.planned-reboot-state { color: var(--warn); font-size: var(--fs-sm); font-weight: 600; }
+
+.incidents-cause-field {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 22rem;
+  margin-bottom: var(--space-4);
+}
+
 /* O diálogo largo não dá margem ao corpo: alinha-se aqui pelo título. */
 .incidents-detail { padding: var(--space-4) var(--space-6) var(--space-6); }
 

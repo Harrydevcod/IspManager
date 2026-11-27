@@ -221,6 +221,7 @@ const settingsSchema = z.object({
   // do cofre: omitida ou vazia = manter a guardada.
   stripeEnabled: strictOptionalBoolean,
   stripeSecretKey: z.string().max(255).optional().nullable(),
+  networkSnmpCommunity: z.string().max(64).optional().nullable(),
   // Conta de tesouraria onde o Stripe liquida; 0 = por escolher.
   stripeTreasuryAccountId: z.coerce.number().int().min(0).optional().default(0),
   // Vinti4 por EasyLink, a via principal (ADR 0019); conta onde o SISP liquida.
@@ -239,7 +240,8 @@ function secretFlags(db: Database.Database) {
     routerosPasswordConfigured: readSecret(db, 'routerosPassword') !== '',
     ultraMsgTokenConfigured: readSecret(db, 'ultraMsgToken') !== '',
     metaAccessTokenConfigured: readSecret(db, 'metaAccessToken') !== '',
-    stripeSecretKeyConfigured: readSecret(db, 'stripeSecretKey') !== ''
+    stripeSecretKeyConfigured: readSecret(db, 'stripeSecretKey') !== '',
+    networkSnmpCommunityConfigured: readSecret(db, 'networkSnmpCommunity') !== ''
   };
 }
 
@@ -346,6 +348,7 @@ const defaultSettings = {
   backupDir: '',
   stripeEnabled: false,
   stripeSecretKey: '',
+  networkSnmpCommunity: '',
   stripeTreasuryAccountId: 0,
   vinti4Enabled: false,
   vinti4TreasuryAccountId: 0
@@ -410,7 +413,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'routerosDryRun') {
         // Só um "false" explícito desliga o ensaio.
         settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
-      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken' || row.key === 'stripeSecretKey') {
+      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken' || row.key === 'stripeSecretKey' || row.key === 'networkSnmpCommunity') {
         // Nunca saem: ver `secretFlags`.
         settings[row.key] = '';
       } else if (row.key === 'whatsappChannelEnabled') {
@@ -633,6 +636,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       ultraMsgToken: '',
       metaAccessToken: '',
       stripeSecretKey: '',
+      networkSnmpCommunity: '',
       ...secretFlags(db)
     };
   });

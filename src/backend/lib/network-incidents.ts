@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { loadProbeEvents, loadProbeStates, readProbeConfig, secondsBetween, sqlNow } from './network-probe';
 import { loadDishIncidents } from './starlink-dish';
+import { downstreamClosure, loadUplinks, readOutageCause, type OutageCause } from './outage-cause';
 
 export type IncidentStatus = 'open' | 'resolved' | 'unknown';
 
@@ -23,27 +24,18 @@ export type NetworkIncident = {
   clients: IncidentClient[];
   /** A causa que a antena Starlink deu ao corte; `null` nas quedas do backbone. */
   cause: string | null;
+  /** Reinício, energia, ligação: lida da prova do uptime e da escolha do operador; `null` na Starlink. */
+  outageCause: OutageCause | null;
+  causeSource: 'auto' | 'operator' | null;
+  /** O local do corte de energia. */
+  siteName: string | null;
+  /** Reinício tão curto que a sonda nem deu a queda: só o uptime o mostrou. */
+  observedDown: boolean;
 };
 
-type Outage = { deviceId: number; startedAt: string; endedAt: string | null; status: IncidentStatus };
+type Outage = { deviceId: number; startedAt: string; endedAt: string | null; status: IncidentStatus; observedDown?: boolean };
 
-/**
- * Tudo o que fica sem sinal quando `root` cai: os equipamentos cujos uplinks estão todos
- * dentro do conjunto. Um equipamento com outro uplink de pé não é arrastado.
- */
-export function downstreamClosure(root: number, uplinks: Map<number, number[]>): Set<number> {
-  const closure = new Set([root]);
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const [device, ups] of uplinks) {
-      if (!closure.has(device) && ups.length > 0 && ups.every((up) => closure.has(up))) {
-        closure.add(device);
-        grew = true;
-      }
-    }
-  }
-  return closure;
-}
+export { downstreamClosure };
 
 /** Os clientes com serviço ativo pendurados diretamente num equipamento do backbone. */
 const CLIENTS_OF_DEVICE_SQL = `
@@ -61,13 +53,7 @@ const CLIENTS_OF_DEVICE_SQL = `
  * equipamentos que só recebem sinal através dele.
  */
 export function clientsDownstreamOf(db: Database.Database, deviceId: number): IncidentClient[] {
-  const active = new Set((db.prepare("SELECT id FROM backbone_devices WHERE status <> 'retired'").all() as Array<{ id: number }>).map((row) => row.id));
-  const uplinks = new Map<number, number[]>();
-  for (const link of db.prepare('SELECT device_id AS deviceId, upstream_device_id AS upstreamId FROM backbone_links')
-    .all() as Array<{ deviceId: number; upstreamId: number }>) {
-    if (!active.has(link.deviceId) || !active.has(link.upstreamId)) continue;
-    uplinks.set(link.deviceId, [...(uplinks.get(link.deviceId) ?? []), link.upstreamId]);
-  }
+  const uplinks = loadUplinks(db);
   const clientsOf = db.prepare(CLIENTS_OF_DEVICE_SQL);
   const clients = new Map<number, IncidentClient>();
   for (const id of downstreamClosure(deviceId, uplinks)) for (const row of clientsOf.all(id) as IncidentClient[]) clients.set(row.clientId, row);
@@ -89,12 +75,7 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
 
   const devices = new Map((db.prepare("SELECT id, name, zone FROM backbone_devices WHERE status <> 'retired'")
     .all() as Array<{ id: number; name: string; zone: string | null }>).map((row) => [row.id, row]));
-  const uplinks = new Map<number, number[]>();
-  for (const link of db.prepare('SELECT device_id AS deviceId, upstream_device_id AS upstreamId FROM backbone_links')
-    .all() as Array<{ deviceId: number; upstreamId: number }>) {
-    if (!devices.has(link.deviceId) || !devices.has(link.upstreamId)) continue;
-    uplinks.set(link.deviceId, [...(uplinks.get(link.deviceId) ?? []), link.upstreamId]);
-  }
+  const uplinks = loadUplinks(db);
   const stillDown = new Set(loadProbeStates(db)
     .filter((row) => row.targetKind === 'backbone' && row.state === 'down').map((row) => row.targetId));
 
@@ -117,6 +98,11 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
   }
   // Sem regresso gravado mas a sonda já não o dá como em baixo (deixou de ser sondado).
   for (const outage of open.values()) if (!stillDown.has(outage.deviceId)) outage.status = 'unknown';
+  // Reinícios que só o uptime viu: a sonda nem chegou a dar a queda.
+  for (const row of db.prepare('SELECT device_id AS deviceId, started_at AS startedAt FROM network_outage_evidence WHERE observed_down = 0')
+    .all() as Array<{ deviceId: number; startedAt: string }>) {
+    if (devices.has(row.deviceId)) outages.push({ deviceId: row.deviceId, startedAt: row.startedAt, endedAt: row.startedAt, status: 'resolved', observedDown: false });
+  }
 
   // A jusante a sonda pode declarar a queda uma ou duas leituras antes da causa.
   const slackSeconds = config.intervalSeconds * config.failThreshold;
@@ -139,6 +125,7 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
       const closure = [...closureOf(outage.deviceId)];
       const clients = new Map<number, IncidentClient>();
       for (const id of closure) for (const row of clientsOf.all(id) as IncidentClient[]) clients.set(row.clientId, row);
+      const reading = readOutageCause(db, outage.deviceId, outage.startedAt, slackSeconds, uplinks);
       return {
         key: `${outage.deviceId}:${outage.startedAt}`,
         backboneDeviceId: outage.deviceId,
@@ -147,10 +134,14 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
         status: outage.status,
         startedAt: outage.startedAt,
         endedAt: outage.endedAt,
-        durationSeconds: outage.status === 'unknown' ? null : secondsBetween(outage.startedAt, outage.endedAt ?? now),
+        durationSeconds: outage.status === 'unknown' || outage.observedDown === false ? null : secondsBetween(outage.startedAt, outage.endedAt ?? now),
         draggedDevices: closure.filter((id) => id !== outage.deviceId).map((id) => devices.get(id)!.name).sort(),
         clients: [...clients.values()].sort((a, b) => a.clientCode.localeCompare(b.clientCode)),
-        cause: null
+        cause: null,
+        outageCause: reading.cause,
+        causeSource: reading.source,
+        siteName: reading.siteName,
+        observedDown: outage.observedDown !== false
       };
     });
 
@@ -172,7 +163,11 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
       durationSeconds: Math.round(cut.durationMs / 1000),
       draggedDevices: [],
       clients: everyone,
-      cause: cut.cause
+      cause: cut.cause,
+      outageCause: null,
+      causeSource: null,
+      siteName: null,
+      observedDown: true
     });
   }
 

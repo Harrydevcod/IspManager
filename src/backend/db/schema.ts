@@ -412,6 +412,8 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   operationMode: text('operation_mode'),
   island: text('island'),
   zone: text('zone'),
+  /** Local físico (torre, poste): corte de energia = vários do mesmo local a reiniciar juntos (migration 0115). */
+  siteId: integer('site_id'),
   status: text('status', { enum: ['active', 'maintenance', 'retired'] }).notNull().default('active'),
   provisional: integer('provisional', { mode: 'boolean' }).notNull().default(false),
   notes: text('notes'),
@@ -768,7 +770,38 @@ export const networkProbeState = sqliteTable('network_probe_state', {
   consecutiveFails: integer('consecutive_fails').notNull().default(0),
   lastOkAt: text('last_ok_at'),
   lastChangeAt: text('last_change_at').notNull().default('CURRENT_TIMESTAMP'),
-  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP'),
+  /** Último sysUpTime lido por SNMP (migration 0115). */
+  deviceUptimeSeconds: integer('device_uptime_seconds'),
+  uptimeReadAt: text('uptime_read_at')
+});
+
+// Local físico de um equipamento do backbone (migration 0115).
+export const networkSites = sqliteTable('network_sites', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+// Prova por queda: uptime a zero e causa do operador; a causa deriva-se ao ler (migration 0115).
+export const networkOutageEvidence = sqliteTable('network_outage_evidence', {
+  deviceId: integer('device_id').notNull(),
+  startedAt: text('started_at').notNull(),
+  uptimeReset: integer('uptime_reset'),
+  observedDown: integer('observed_down').notNull().default(1),
+  operatorCause: text('operator_cause', { enum: ['reboot', 'power', 'link'] }),
+  decidedBy: integer('decided_by'),
+  decidedAt: text('decided_at')
+}, (table) => [primaryKey({ columns: [table.deviceId, table.startedAt] })]);
+
+// "Vou reiniciar": janela em que a queda é um reinício programado (migration 0115).
+export const plannedReboots = sqliteTable('planned_reboots', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  deviceId: integer('device_id').notNull(),
+  startsAt: text('starts_at').notNull(),
+  untilAt: text('until_at').notNull(),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
 // Sonda de rede: só as transições de estado (migration 0037).

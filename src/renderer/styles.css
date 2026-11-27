@@ -4207,6 +4207,12 @@ h2 {
 }
 
 .secret-field { max-width: 30rem; }
+
+/* Teste do SNMP: o botão e o resultado por baixo do campo da comunidade. */
+.snmp-test { display: grid; gap: var(--space-3); max-width: 34rem; }
+.snmp-test-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.snmp-test-meta { color: var(--text-2); font-size: var(--fs-sm); }
+.snmp-silent { color: var(--text-3); }
 .secret-field-control { display: flex; align-items: center; gap: var(--space-2); }
 .secret-field-control input { min-width: 0; flex: 1; }
 .secret-field-control > span { color: var(--text-2); font-size: var(--fs-sm); }
@@ -5624,6 +5630,10 @@ label.field-toggle {
   font-size: var(--fs-xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.network-health-restarts {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
 }
 .network-health-seen {
   margin: var(--space-3) 0 0;

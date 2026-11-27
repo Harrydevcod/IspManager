@@ -5,7 +5,11 @@ import { formatPtDateTime } from '../../lib/format';
 export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado'
   | 'config_externa' | 'porta_oscila' | 'router_reiniciou' | 'syn_flood' | 'vpn_falha';
 export type HealthTone = 'ok' | 'warn' | 'danger';
-export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
+export type HealthOutage = {
+  id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number;
+  /** Reinícios e cortes de energia, à parte das quedas (só no backbone). */
+  restarts?: number;
+};
 export type HealthDown = { kind: 'backbone' | 'assignment'; id: number; name: string; ipAddress: string; since: string };
 export type HealthFinding = {
   kind: FindingKind; subject: string; label: string; count: number; firstAt: string; lastAt: string;
@@ -282,7 +286,16 @@ export function antennaDrops(health: NetworkHealth): number {
   for (const row of health.findings) {
     if (row.kind === 'antena_em_baixo' && row.deviceName) drops.set(row.subject, Math.max(drops.get(row.subject) ?? 0, row.count));
   }
+  // Um reinício também aparece como queda, no ping e no netwatch do router: sai daqui.
+  for (const row of health.antennas) {
+    if (row.restarts) drops.set(row.ipAddress, Math.max(0, (drops.get(row.ipAddress) ?? 0) - row.restarts));
+  }
   return [...drops.values()].reduce((total, count) => total + count, 0);
+}
+
+/** Reinícios e cortes de energia das antenas na janela. */
+export function antennaRestarts(health: NetworkHealth): number {
+  return health.antennas.reduce((total, row) => total + (row.restarts ?? 0), 0);
 }
 
 /** Lê ou escreve na API da rede e devolve o corpo; um erro traz a mensagem do servidor. */
