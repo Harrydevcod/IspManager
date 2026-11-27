@@ -6,6 +6,8 @@ import {
   modelFromBanner,
   parseRealm,
   parseSnmpString,
+  parseSnmpTimeTicks,
+  OID_SYS_UPTIME,
   parseTitle,
   readHttpBanner,
   type HttpBanner
@@ -19,7 +21,7 @@ import {
  * codificador do módulo para gerar o caso de teste provava só que ele é
  * coerente consigo mesmo.
  */
-function snmpResponse(sysDescr: string, errorStatus = 0): Buffer {
+function snmpResponse(sysDescr: string | { tag: number; bytes: number[] }, errorStatus = 0): Buffer {
   // Comprimento BER a sério: acima de 127 vai o número de bytes e depois os
   // bytes. Um `sysDescr` de 300 caracteres precisa mesmo de dois — encurtar
   // isto dava um pacote inválido e um teste que media o gerador, não o parser.
@@ -32,7 +34,7 @@ function snmpResponse(sysDescr: string, errorStatus = 0): Buffer {
   const tlv = (tag: number, payload: Buffer) => Buffer.concat([Buffer.from([tag]), len(payload), payload]);
 
   const oid = tlv(0x06, Buffer.from([0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00]));
-  const value = tlv(0x04, Buffer.from(sysDescr, 'latin1'));
+  const value = typeof sysDescr === 'string' ? tlv(0x04, Buffer.from(sysDescr, 'latin1')) : tlv(sysDescr.tag, Buffer.from(sysDescr.bytes));
   const varbindList = tlv(0x30, tlv(0x30, Buffer.concat([oid, value])));
   const pdu = tlv(0xa2, Buffer.concat([
     tlv(0x02, Buffer.from([0x01])),
@@ -311,5 +313,26 @@ describe('identifyModel', () => {
     const result = await identifyModel('192.168.1.13', { snmp: async () => long });
     expect(result?.model).toHaveLength(120);
     expect(result?.detail).toHaveLength(400);
+  });
+});
+
+describe('parseSnmpTimeTicks', () => {
+  test('converte centésimos de segundo em segundos', () => {
+    // 0x0112A880 = 18 000 000 ticks = 180 000 s (50 h)
+    expect(parseSnmpTimeTicks(snmpResponse({ tag: 0x43, bytes: [0x01, 0x12, 0xa8, 0x80] }))).toBe(180_000);
+    expect(parseSnmpTimeTicks(snmpResponse({ tag: 0x43, bytes: [0x00, 0xff, 0xff, 0xff, 0xff] }))).toBe(42_949_672);
+    expect(parseSnmpTimeTicks(snmpResponse({ tag: 0x43, bytes: [0x64] }))).toBe(1);
+  });
+
+  test('recusa o que não é TimeTicks: noSuchObject não é "acabou de arrancar"', () => {
+    expect(parseSnmpTimeTicks(snmpResponse({ tag: 0x80, bytes: [] }))).toBeNull();
+    expect(parseSnmpTimeTicks(snmpResponse('RouterOS'))).toBeNull();
+    expect(parseSnmpTimeTicks(snmpResponse({ tag: 0x43, bytes: [0x64] }, 2))).toBeNull();
+  });
+
+  test('o pedido leva o OID do sysUpTime e a comunidade escolhida', () => {
+    const packet = buildSnmpGet(7, 'rede-ro', OID_SYS_UPTIME);
+    expect(packet.includes(Buffer.from('rede-ro', 'latin1'))).toBe(true);
+    expect(packet.includes(OID_SYS_UPTIME)).toBe(true);
   });
 });

@@ -1,12 +1,17 @@
 import type Database from 'better-sqlite3';
 import { readProbeConfig } from './network-probe';
+import { loadUplinks, readOutageCause } from './outage-cause';
 import { DHCP_CHURN_THRESHOLD } from './routeros';
 import { DROP_CAPTURE_PREFIX } from './routeros-drop-capture-script';
 import type { FindingKind } from './router-log-watch';
 import { loadStarlinkHealth, type StarlinkHealth } from './starlink-dish';
 
 export type HealthTone = 'ok' | 'warn' | 'danger';
-export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
+export type HealthOutage = {
+  id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number;
+  /** Das quedas, quantas foram reinício, corte de energia ou reinício programado (só no backbone). */
+  restarts?: number;
+};
 export type HealthDown = { kind: 'backbone' | 'assignment'; id: number; name: string; ipAddress: string; since: string };
 export type HealthFinding = {
   kind: FindingKind; subject: string; label: string; count: number; firstAt: string; lastAt: string;
@@ -200,6 +205,18 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
   const CLIENT_NAMES = `SELECT a.id, c.full_name AS name, COALESCE(a.ip_address, '') AS ipAddress
     FROM service_device_assignments a JOIN services s ON s.id = a.service_id JOIN clients c ON c.id = s.client_id`;
   const antennas = outages('backbone', BACKBONE_NAMES);
+  // Um reinício ou um corte de energia não é avaria do rádio: conta-se à parte das quedas.
+  if (antennas.length > 0) {
+    const config = readProbeConfig(db);
+    const slack = config.intervalSeconds * config.failThreshold;
+    const uplinks = loadUplinks(db);
+    const downsOf = db.prepare("SELECT at FROM network_probe_events WHERE target_kind = 'backbone' AND target_id = ? AND to_state = 'down' AND gap_before = 0 AND at >= ?");
+    for (const row of antennas) {
+      const restarts = (downsOf.all(row.id, windowStart) as Array<{ at: string }>)
+        .filter((event) => ['reboot', 'power', 'planned'].includes(readOutageCause(db, row.id, event.at, slack, uplinks).cause)).length;
+      if (restarts > 0) row.restarts = restarts;
+    }
+  }
   const clients = outages('assignment', CLIENT_NAMES).slice(0, 6);
 
   const lastProbeAt = (db.prepare('SELECT MAX(checked_at) AS at FROM network_probe_state').get() as { at: string | null }).at;

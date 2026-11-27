@@ -116,6 +116,9 @@ export type SettingsFormState = {
   /** Só uma chave nova; vazia = manter a guardada. */
   stripeSecretKey: string;
   stripeSecretKeyConfigured?: boolean;
+  /** Comunidade SNMP só de leitura das antenas do backbone; nunca volta do servidor. */
+  networkSnmpCommunity: string;
+  networkSnmpCommunityConfigured?: boolean;
   /** Id da conta de tesouraria como texto; '' = por escolher. */
   stripeTreasuryAccountId: string;
   vinti4Enabled: boolean;

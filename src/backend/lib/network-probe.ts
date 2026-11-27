@@ -4,12 +4,17 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { recordNotification } from './notifications';
 import { requestCompanionSnapshotPush } from './companion-sync';
+import { snmpUptime } from './device-model';
+import { readSecret } from './secrets';
+import { downstreamClosure, isPlannedOutage, loadUplinks, readOutageCause, recordOutageEvidence, uptimeWasReset } from './outage-cause';
 
 export type ProbeState = 'up' | 'down';
 export type ProbeTargetKind = 'backbone' | 'assignment';
 
 export type PingResult = { ok: boolean; rttMs: number | null };
 export type Pinger = (ip: string, timeoutMs: number) => Promise<PingResult>;
+/** Uptime do equipamento em segundos (sysUpTime por SNMP), ou `null` sem resposta. */
+export type UptimeReader = (ip: string, community: string) => Promise<number | null>;
 
 export type ProbeTarget = {
   kind: ProbeTargetKind;
@@ -30,6 +35,8 @@ export type ProbeStateRow = {
   lastOkAt: string | null;
   lastChangeAt: string;
   checkedAt: string;
+  deviceUptimeSeconds?: number | null;
+  uptimeReadAt?: string | null;
 };
 
 const DEFAULT_TIMEOUT_MS = 1500;
@@ -163,7 +170,8 @@ export function loadProbeStates(db: Database.Database): ProbeStateRow[] {
   return db.prepare(`
     SELECT target_kind AS targetKind, target_id AS targetId, ip_address AS ipAddress, state,
            rtt_ms AS rttMs, consecutive_fails AS consecutiveFails, last_ok_at AS lastOkAt,
-           last_change_at AS lastChangeAt, checked_at AS checkedAt
+           last_change_at AS lastChangeAt, checked_at AS checkedAt,
+           device_uptime_seconds AS deviceUptimeSeconds, uptime_read_at AS uptimeReadAt
     FROM network_probe_state
   `).all() as ProbeStateRow[];
 }
@@ -218,7 +226,11 @@ export function looksOffNetwork(targets: ProbeTarget[], results: PingResult[]): 
 /** Sonda todos os alvos uma vez e persiste estado + transições. */
 export async function runNetworkProbe(
   db: Database.Database,
-  options: { includeClients: boolean; failThreshold: number; ping?: Pinger; timeoutMs?: number; presenceUnknown?: boolean }
+  options: {
+    includeClients: boolean; failThreshold: number; ping?: Pinger; timeoutMs?: number; presenceUnknown?: boolean;
+    /** Comunidade SNMP só de leitura das antenas do backbone; vazia = não se lê o uptime. */
+    snmpCommunity?: string; uptime?: UptimeReader;
+  }
 ): Promise<ProbeRunSummary> {
   const ping = options.ping ?? systemPing;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -234,12 +246,26 @@ export async function runNetworkProbe(
     return { skipped: true, reason: 'nenhum equipamento do backbone responde — o PC parece estar fora da rede de gestão', checked: targets.length, up: 0, down: 0, transitions: 0 };
   }
 
+  // O uptime só das antenas do backbone que responderam: um datagrama cada, e só ele separa
+  // um reinício (volta a zero) de uma ligação perdida (continua a contar).
+  const community = options.snmpCommunity ?? '';
+  const readUptime = options.uptime ?? ((ip: string, value: string) => snmpUptime(ip, value, timeoutMs));
+  const indexes = targets.map((_, index) => index);
+  const uptimes = community === ''
+    ? targets.map(() => null)
+    : await mapWithLimit(indexes, MAX_CONCURRENCY, (index) =>
+      targets[index].kind === 'backbone' && results[index].ok ? readUptime(targets[index].ipAddress, community) : Promise.resolve(null));
+
   const now = sqlNow();
   const upsert = db.prepare(`
     INSERT INTO network_probe_state
-      (target_kind, target_id, ip_address, state, rtt_ms, consecutive_fails, last_ok_at, last_change_at, checked_at)
-    VALUES (@targetKind, @targetId, @ipAddress, @state, @rttMs, @consecutiveFails, @lastOkAt, @lastChangeAt, @checkedAt)
+      (target_kind, target_id, ip_address, state, rtt_ms, consecutive_fails, last_ok_at, last_change_at, checked_at,
+       device_uptime_seconds, uptime_read_at)
+    VALUES (@targetKind, @targetId, @ipAddress, @state, @rttMs, @consecutiveFails, @lastOkAt, @lastChangeAt, @checkedAt,
+       @deviceUptimeSeconds, @uptimeReadAt)
     ON CONFLICT(target_kind, target_id) DO UPDATE SET
+      device_uptime_seconds = excluded.device_uptime_seconds,
+      uptime_read_at = excluded.uptime_read_at,
       ip_address = excluded.ip_address,
       state = excluded.state,
       rtt_ms = excluded.rtt_ms,
@@ -252,7 +278,12 @@ export async function runNetworkProbe(
     INSERT INTO network_probe_events (target_kind, target_id, ip_address, from_state, to_state, at, duration_seconds, gap_before)
     VALUES (@targetKind, @targetId, @ipAddress, @fromState, @toState, @at, @durationSeconds, @gapBefore)
   `);
-  const gapLimitSeconds = readProbeConfig(db).intervalSeconds * 3;
+  const config = readProbeConfig(db);
+  const gapLimitSeconds = config.intervalSeconds * 3;
+  const slackSeconds = config.intervalSeconds * options.failThreshold;
+  const uplinks = loadUplinks(db);
+  // O sino da subida espera pela prova gravada: diz "reiniciou" ou "voltou" com a causa já lida.
+  const backboneReturns: Array<{ target: ProbeTarget; startedAt: string }> = [];
 
   const summary: ProbeRunSummary = { checked: targets.length, up: 0, down: 0, transitions: 0 };
 
@@ -275,8 +306,27 @@ export async function runNetworkProbe(
         consecutiveFails: decision.consecutiveFails,
         lastOkAt: results[index].ok ? now : previous?.lastOkAt ?? null,
         lastChangeAt: decision.changed ? now : previous?.lastChangeAt ?? now,
-        checkedAt: now
+        checkedAt: now,
+        deviceUptimeSeconds: uptimes[index] ?? previous?.deviceUptimeSeconds ?? null,
+        uptimeReadAt: uptimes[index] === null ? previous?.uptimeReadAt ?? null : now
       });
+
+      const uptime = uptimes[index];
+      if (target.kind === 'backbone' && previous) {
+        if (decision.changed && decision.state === 'up' && previous.state === 'down') {
+          // Arrancou depois da última resposta? Então reiniciou pelo meio; senão, a ligação caiu.
+          const aliveSince = secondsBetween(previous.lastOkAt ?? previous.lastChangeAt, now);
+          recordOutageEvidence(db, target.id, previous.lastChangeAt, uptime === null ? null : uptimeWasReset(uptime, aliveSince));
+          backboneReturns.push({ target, startedAt: previous.lastChangeAt });
+        } else if (decision.state === 'up' && !decision.changed && uptime !== null &&
+          previous.deviceUptimeSeconds != null && previous.uptimeReadAt &&
+          uptimeWasReset(uptime, secondsBetween(previous.uptimeReadAt, now))) {
+          // Reiniciou entre duas leituras sem a sonda dar a queda: o arranque foi há `uptime` segundos.
+          const bootedAt = new Date(Date.parse(`${now.replace(' ', 'T')}Z`) - uptime * 1000).toISOString().slice(0, 19).replace('T', ' ');
+          recordOutageEvidence(db, target.id, bootedAt, true, false);
+          backboneReturns.push({ target, startedAt: bootedAt });
+        }
+      }
 
       // Buraco de observação: a aplicação esteve fechada mais tempo do que a
       // sonda tolera. Marca-se, porque esse tempo não é rede de pé nem em baixo.
@@ -297,13 +347,15 @@ export async function runNetworkProbe(
           durationSeconds: previous && !gapBefore ? secondsBetween(previous.lastChangeAt, now) : null,
           gapBefore: gapBefore ? 1 : 0
         });
-        // Só o backbone entra no sino: um CPE de cliente em baixo é rotina.
-        if (decision.changed && target.kind === 'backbone') {
+        // Só o backbone entra no sino: um CPE de cliente em baixo é rotina. Um "Vou reiniciar"
+        // deste equipamento ou de um de cima cala a queda: o operador já sabe.
+        if (decision.changed && target.kind === 'backbone' && decision.state === 'down' &&
+          !isPlannedOutage(db, target.id, now, slackSeconds, uplinks)) {
           recordNotification(db, {
             uid: `probe:${target.kind}:${target.id}:${now}`,
-            kind: decision.state === 'down' ? 'network_down' : 'network_up',
-            severity: decision.state === 'down' ? 'danger' : 'info',
-            title: decision.state === 'down' ? `${target.name} em baixo` : `${target.name} voltou`,
+            kind: 'network_down',
+            severity: 'danger',
+            title: `${target.name} em baixo`,
             detail: target.ipAddress,
             section: 'topology',
             focus: 'incidents',
@@ -313,6 +365,27 @@ export async function runNetworkProbe(
         if (decision.changed) summary.transitions += 1;
       }
     });
+
+    for (const { target, startedAt } of backboneReturns) {
+      // Um arrastado volta quando volta o de cima: o sino é da causa, não de cada um.
+      const dragged = backboneReturns.some((other) => other.target.id !== target.id &&
+        downstreamClosure(other.target.id, uplinks).has(target.id));
+      if (dragged) continue;
+      const reading = readOutageCause(db, target.id, startedAt, slackSeconds, uplinks);
+      if (reading.cause === 'planned') continue;
+      const minutes = Math.max(1, Math.round(secondsBetween(startedAt, now) / 60));
+      recordNotification(db, {
+        uid: `probe:${target.kind}:${target.id}:up:${now}`,
+        kind: 'network_up',
+        severity: 'info',
+        title: reading.cause === 'power' ? `Corte de energia em ${reading.siteName ?? target.name}`
+          : reading.cause === 'reboot' ? `${target.name} reiniciou` : `${target.name} voltou`,
+        detail: reading.cause === 'link' ? `${target.ipAddress} · queda de ligação · ${minutes} min` : `${target.ipAddress} · ${minutes} min`,
+        section: 'topology',
+        focus: 'incidents',
+        createdAt: now
+      });
+    }
   })();
 
   // Algo caiu ou voltou: o telemóvel sabe no próximo minuto, não daqui a 5.
@@ -331,7 +404,12 @@ export async function runNetworkProbeIfDue(): Promise<ProbeRunSummary> {
   if (isOffNetwork(presence)) {
     return { skipped: true, reason: offNetworkReason(presence), checked: 0, up: 0, down: 0, transitions: 0 };
   }
-  return runNetworkProbe(db, { includeClients: config.includeClients, failThreshold: config.failThreshold, presenceUnknown: presence.state === 'unknown' });
+  return runNetworkProbe(db, {
+    includeClients: config.includeClients,
+    failThreshold: config.failThreshold,
+    presenceUnknown: presence.state === 'unknown',
+    snmpCommunity: readSecret(db, 'networkSnmpCommunity')
+  });
 }
 
 // ------------------------------------------------------------ leitura de estado
@@ -396,7 +474,11 @@ export function loadNetworkStatus(db: Database.Database, windowDays = 30): Netwo
   const known = loadProbeTargets(db, true);
   const configured = config.includeClients ? known : known.filter((target) => target.kind === 'backbone');
   const states = new Map(loadProbeStates(db).map((row) => [`${row.targetKind}:${row.targetId}`, row]));
-  const events = loadProbeEvents(db, windowStart);
+  const uplinks = loadUplinks(db);
+  const slackSeconds = config.intervalSeconds * config.failThreshold;
+  // Um reinício programado não conta contra a disponibilidade: tira-se o par queda/regresso.
+  const events = withoutPlannedOutages(loadProbeEvents(db, windowStart),
+    (event) => event.kind === 'backbone' && isPlannedOutage(db, event.id, event.at, slackSeconds, uplinks));
 
   const result: NetworkTargetStatus[] = [];
   for (const target of known) {
@@ -445,6 +527,20 @@ export function loadNetworkStatus(db: Database.Database, windowDays = 30): Netwo
 }
 
 // -------------------------------------------------------------- disponibilidade
+
+/** Tira cada queda programada e o regresso que a fecha; o resto fica como estava. */
+export function withoutPlannedOutages<T extends { kind: ProbeTargetKind; id: number; toState: ProbeState; at: string }>(
+  events: T[],
+  isPlannedDown: (event: T) => boolean
+): T[] {
+  const skipping = new Set<string>();
+  return [...events].sort((a, b) => a.at.localeCompare(b.at)).filter((event) => {
+    const key = `${event.kind}:${event.id}`;
+    if (event.toState === 'down' && isPlannedDown(event)) { skipping.add(key); return false; }
+    if (event.toState === 'up' && skipping.delete(key)) return false;
+    return true;
+  });
+}
 
 export type UptimeEvent = { fromState: ProbeState | null; toState: ProbeState; at: string; gapBefore?: boolean };
 

@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { antennaDrops, healthSituations, NETWORK_API, routerLogStopped, starlinkLine, TONE_LABEL, type NetworkHealth } from './network-health';
+import { antennaDrops, antennaRestarts, healthSituations, NETWORK_API, routerLogStopped, starlinkLine, TONE_LABEL, type NetworkHealth } from './network-health';
 
 /**
  * A rede no painel inicial: o que a sonda e o registo do router viram nas últimas 72 horas.
@@ -36,6 +36,11 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
               <div data-alert={antennaDrops(health) > 0 ? 'warning' : undefined}>
                 <dt>Quedas de antenas</dt>
                 <dd>{antennaDrops(health)}</dd>
+                {antennaRestarts(health) > 0 && (
+                  <span className="network-health-restarts">
+                    {antennaRestarts(health) === 1 ? 'mais 1 reinício' : `mais ${antennaRestarts(health)} reinícios`}
+                  </span>
+                )}
               </div>
               <div data-alert={health.downNow.length > 0 ? 'danger' : undefined}>
                 <dt>Em baixo agora</dt>

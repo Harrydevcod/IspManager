@@ -1,6 +1,9 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
-import { Button, DataTable, Field, Message, RouterChoice, RouterOptionsNotice, SecretField, Toggle, useRouterOptions, type DataTableColumn, type SecretDraft } from '../../components';
+import { Button, DataTable, EmptyState, Field, Message, RouterChoice, RouterOptionsNotice, SecretField, Toggle, useRouterOptions, type DataTableColumn, type SecretDraft } from '../../components';
+import { useState } from 'react';
 import { formatCve, formatPtDate } from '../../lib/format';
+import { apiUrl } from '../../lib/api';
+import { authFetch } from '../../lib/auth';
 import { PlanNetworkFields } from './PlanNetworkFields';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
@@ -98,6 +101,65 @@ const DIVERGENCE_LABEL: Record<string, string> = {
   username_taken: 'Utilizador em uso por outro serviço no router'
 };
 
+type SnmpReading = { id: number; name: string; ipAddress: string; uptimeSeconds: number | null };
+
+export function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days} d ${hours} h`;
+  if (hours > 0) return `${hours} h ${String(minutes).padStart(2, '0')} min`;
+  return `${Math.max(1, minutes)} min`;
+}
+
+const SNMP_COLUMNS: DataTableColumn<SnmpReading>[] = [
+  { header: 'Equipamento', sortValue: (row) => row.name, cell: (row) => row.name },
+  { header: 'IP', sortValue: (row) => row.ipAddress, cell: (row) => <code>{row.ipAddress}</code> },
+  { header: 'Ligado há', sortValue: (row) => row.uptimeSeconds ?? -1, defaultDirection: 'desc', align: 'end',
+    cell: (row) => row.uptimeSeconds === null ? <span className="snmp-silent">Sem resposta</span> : formatUptime(row.uptimeSeconds) }
+];
+
+/** Pergunta o uptime a cada antena do backbone com a comunidade escrita (ou a gravada), sem gravar nada. */
+function SnmpTest({ community, configured }: { community: string; configured: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [rows, setRows] = useState<SnmpReading[] | null>(null);
+  const [error, setError] = useState('');
+  if (!community && !configured) return null;
+
+  async function run() {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await authFetch(apiUrl('/api/network/snmp-test'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(community ? { community } : {})
+      });
+      const body = await response.json().catch(() => ({})) as SnmpReading[] | { error?: string };
+      if (!response.ok || !Array.isArray(body)) throw new Error(!Array.isArray(body) && body.error ? body.error : 'Não foi possível testar o SNMP.');
+      setRows(body);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível testar o SNMP.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const answered = rows?.filter((row) => row.uptimeSeconds !== null).length ?? 0;
+  return (
+    <div className="snmp-test wide-field">
+      <div className="snmp-test-bar">
+        <Button variant="secondary" size="sm" loading={busy} onClick={() => void run()}>Testar nas antenas</Button>
+        {rows && <span className="snmp-test-meta">{answered} de {rows.length} respondem</span>}
+      </div>
+      {error && <Message tone="error">{error}</Message>}
+      {rows && (
+        <DataTable rows={rows} rowKey={(row) => row.id} columns={SNMP_COLUMNS}
+          gridTemplateColumns="minmax(140px, 1.4fr) 132px 120px" defaultSort={{ key: 'Equipamento', direction: 'asc' }}
+          empty={<EmptyState title="Sem antenas com IP" description="Registe o IP dos equipamentos do backbone." />} />
+      )}
+    </div>
+  );
+}
+
 type NetworkTabProps = {
   /** A sonda fica nas Configurações; o router vive no módulo Router de gestão. */
   part: 'probe' | 'router';
@@ -105,6 +167,9 @@ type NetworkTabProps = {
   onUpdate: UpdateField;
   secretDraft?: SecretDraft;
   onSecretDraftChange?: (next: SecretDraft) => void;
+  /** A comunidade SNMP das antenas: o uptime separa um reinício de uma queda de ligação. */
+  snmpDraft?: SecretDraft;
+  onSnmpDraftChange?: (next: SecretDraft) => void;
   onToggle: ToggleField;
   probeBusy: boolean;
   probeMessage: string;
@@ -132,6 +197,8 @@ export function NetworkTab({
   onUpdate,
   secretDraft = { editing: false },
   onSecretDraftChange = () => undefined,
+  snmpDraft = { editing: false },
+  onSnmpDraftChange = () => undefined,
   onToggle,
   probeBusy,
   probeMessage,
@@ -178,6 +245,9 @@ export function NetworkTab({
             value={form.networkProbeFailThreshold}
             onChange={(event) => onUpdate('networkProbeFailThreshold', event.target.value)}
           />
+          <SecretField label="Comunidade SNMP das antenas" configured={Boolean(form.networkSnmpCommunityConfigured)}
+            draft={snmpDraft} onDraftChange={onSnmpDraftChange} />
+          <SnmpTest community={snmpDraft.editing ? snmpDraft.value ?? '' : ''} configured={Boolean(form.networkSnmpCommunityConfigured)} />
           <Toggle
             title="Sondar também os equipamentos dos clientes"
             checked={form.networkProbeIncludeClients}

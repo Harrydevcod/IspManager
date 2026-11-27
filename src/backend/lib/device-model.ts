@@ -42,7 +42,9 @@ const BODY_HEAD_BYTES = 4 * 1024;
 // ------------------------------------------------------------------- SNMP
 
 /** `1.3.6.1.2.1.1.1.0` — sysDescr.0, já em BER. O primeiro byte é `1*40+3`. */
-const OID_SYS_DESCR = Buffer.from([0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00]);
+export const OID_SYS_DESCR = Buffer.from([0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00]);
+/** `1.3.6.1.2.1.1.3.0` — sysUpTime.0: centésimos de segundo desde que o agente arrancou. */
+export const OID_SYS_UPTIME = Buffer.from([0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x03, 0x00]);
 
 function berLength(length: number): Buffer {
   if (length < 0x80) return Buffer.from([length]);
@@ -74,8 +76,8 @@ function berInteger(value: number): Buffer {
  * quatro TLVs encaixados, e a alternativa era uma biblioteca inteira de SNMP
  * para mandar sempre o mesmo datagrama.
  */
-export function buildSnmpGet(requestId: number, community = SNMP_COMMUNITY): Buffer {
-  const varbind = tlv(0x30, Buffer.concat([tlv(0x06, OID_SYS_DESCR), tlv(0x05, Buffer.alloc(0))]));
+export function buildSnmpGet(requestId: number, community = SNMP_COMMUNITY, oid = OID_SYS_DESCR): Buffer {
+  const varbind = tlv(0x30, Buffer.concat([tlv(0x06, oid), tlv(0x05, Buffer.alloc(0))]));
   const pdu = tlv(
     0xa0,
     Buffer.concat([berInteger(requestId), berInteger(0), berInteger(0), tlv(0x30, varbind)])
@@ -122,7 +124,8 @@ function readChildren(buffer: Buffer): Tlv[] {
  * seja exatamente uma resposta bem formada com uma cadeia lá dentro — um
  * datagrama truncado ou um erro do agente não podem virar nome de modelo.
  */
-export function parseSnmpString(packet: Buffer): string | null {
+/** O valor do único varbind de uma GetResponse sem erro; `null` para tudo o resto. */
+function snmpValue(packet: Buffer): Tlv | null {
   const message = readTlv(packet, 0);
   if (!message || message.tag !== 0x30) return null;
 
@@ -136,14 +139,39 @@ export function parseSnmpString(packet: Buffer): string | null {
   const varbind = readChildren(varbindList.value)[0];
   if (!varbind) return null;
 
-  const [, value] = readChildren(varbind.value);
+  return readChildren(varbind.value)[1] ?? null;
+}
+
+export function parseSnmpString(packet: Buffer): string | null {
+  const value = snmpValue(packet);
   if (!value || value.tag !== 0x04) return null;
 
   const text = value.value.toString('latin1').replace(/\s+/g, ' ').trim();
   return text || null;
 }
 
+/**
+ * Tira o `sysUpTime` (TimeTicks, tag 0x43, centésimos de segundo sem sinal) e devolve segundos.
+ * `null` para outro tipo — um `noSuchObject` (0x80) não pode passar por "acabou de arrancar".
+ */
+export function parseSnmpTimeTicks(packet: Buffer): number | null {
+  const value = snmpValue(packet);
+  if (!value || value.tag !== 0x43 || value.value.length === 0 || value.value.length > 5) return null;
+  let ticks = 0;
+  for (const byte of value.value) ticks = ticks * 256 + byte;
+  return Math.floor(ticks / 100);
+}
+
+/** Uptime do equipamento em segundos, ou `null` se o SNMP não responder com a comunidade dada. */
+export function snmpUptime(ip: string, community: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<number | null> {
+  return snmpGet(ip, (requestId) => buildSnmpGet(requestId, community, OID_SYS_UPTIME), parseSnmpTimeTicks, timeoutMs);
+}
+
 export function snmpSysDescr(ip: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<string | null> {
+  return snmpGet(ip, (requestId) => buildSnmpGet(requestId), parseSnmpString, timeoutMs);
+}
+
+function snmpGet<T>(ip: string, build: (requestId: number) => Buffer, parse: (packet: Buffer) => T | null, timeoutMs: number): Promise<T | null> {
   return new Promise((resolve) => {
     let socket: dgram.Socket;
     try {
@@ -154,7 +182,7 @@ export function snmpSysDescr(ip: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<
     }
 
     let settled = false;
-    const finish = (result: string | null) => {
+    const finish = (result: T | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -170,9 +198,9 @@ export function snmpSysDescr(ip: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<
     // Só distingue esta pergunta de outra em voo; não é segredo nenhum.
     const requestId = 1 + Math.floor(Math.random() * 0x7ffffffe);
 
-    socket.on('message', (packet) => finish(parseSnmpString(packet)));
+    socket.on('message', (packet) => finish(parse(packet)));
     socket.on('error', () => finish(null));
-    socket.send(buildSnmpGet(requestId), SNMP_PORT, ip, (error) => {
+    socket.send(build(requestId), SNMP_PORT, ip, (error) => {
       if (error) finish(null);
     });
   });

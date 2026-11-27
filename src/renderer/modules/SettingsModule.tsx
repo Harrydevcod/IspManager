@@ -96,6 +96,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [ultraSecretDraft, setUltraSecretDraft] = useState<SecretDraft>({ editing: false });
   const [metaSecretDraft, setMetaSecretDraft] = useState<SecretDraft>({ editing: false });
   const [stripeSecretDraft, setStripeSecretDraft] = useState<SecretDraft>({ editing: false });
+  const [snmpSecretDraft, setSnmpSecretDraft] = useState<SecretDraft>({ editing: false });
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -205,6 +206,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     autoSuspensionMaxPercent: '20',
     stripeEnabled: false,
     stripeSecretKey: '',
+    networkSnmpCommunity: '',
     stripeTreasuryAccountId: '',
     vinti4Enabled: false,
     vinti4TreasuryAccountId: ''
@@ -617,6 +619,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           ultraMsgToken: ultraSecretDraft.editing && ultraSecretDraft.value ? ultraSecretDraft.value : undefined,
           metaAccessToken: metaSecretDraft.editing && metaSecretDraft.value ? metaSecretDraft.value : undefined,
           stripeSecretKey: stripeSecretDraft.editing && stripeSecretDraft.value ? stripeSecretDraft.value : undefined,
+          networkSnmpCommunity: snmpSecretDraft.editing && snmpSecretDraft.value ? snmpSecretDraft.value : undefined,
           stripeTreasuryAccountId: Number(savedForm.stripeTreasuryAccountId) || 0,
           vinti4TreasuryAccountId: Number(savedForm.vinti4TreasuryAccountId) || 0,
           defaultDueDay: Number(savedForm.defaultDueDay),
@@ -657,6 +660,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         ultraMsgTokenConfigured?: boolean;
         metaAccessTokenConfigured?: boolean;
         stripeSecretKeyConfigured?: boolean;
+        networkSnmpCommunityConfigured?: boolean;
       };
       const settledForm = {
         ...savedForm,
@@ -665,6 +669,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         metaAccessToken: '',
         stripeSecretKey: '',
         stripeSecretKeyConfigured: result.stripeSecretKeyConfigured ?? savedForm.stripeSecretKeyConfigured,
+        networkSnmpCommunity: '',
+        networkSnmpCommunityConfigured: result.networkSnmpCommunityConfigured ?? savedForm.networkSnmpCommunityConfigured,
         routerosPasswordConfigured: result.routerosPasswordConfigured ?? savedForm.routerosPasswordConfigured,
         ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured,
         metaAccessTokenConfigured: result.metaAccessTokenConfigured ?? savedForm.metaAccessTokenConfigured
@@ -674,6 +680,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       setUltraSecretDraft({ editing: false });
       setMetaSecretDraft({ editing: false });
       setStripeSecretDraft({ editing: false });
+      setSnmpSecretDraft({ editing: false });
       // Desligar a app móvel corta também a verificação do pareamento em curso:
       // desligada, o desktop não contacta o telemóvel.
       if (lastSavedForm?.smsCompanionEnabled !== settledForm.smsCompanionEnabled) {
@@ -972,6 +979,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
             form={form}
             secretDraft={routerSecretDraft}
             onSecretDraftChange={setRouterSecretDraft}
+            snmpDraft={snmpSecretDraft}
+            onSnmpDraftChange={setSnmpSecretDraft}
             onUpdate={updateForm}
             onToggle={toggleForm}
             probeBusy={probeBusy}

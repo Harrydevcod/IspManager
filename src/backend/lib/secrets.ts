@@ -36,7 +36,7 @@ export const SECRETS_LOST_KEY = 'secretsLost';
  * As credenciais portáteis de infraestrutura. A assinatura das sessões saiu
  * daqui para `session-secret.ts`: recria-se num restauro, não se recupera.
  */
-export const SECRET_KEYS = ['routerosPassword', 'ultraMsgToken', 'metaAccessToken', 'smsCompanionPairingKey', 'smsRelayAdminKey', 'stripeSecretKey'] as const;
+export const SECRET_KEYS = ['routerosPassword', 'ultraMsgToken', 'metaAccessToken', 'smsCompanionPairingKey', 'smsRelayAdminKey', 'stripeSecretKey', 'networkSnmpCommunity'] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
@@ -47,7 +47,8 @@ export const SECRET_LABELS: Record<SecretKey, string> = {
   metaAccessToken: 'Token Meta Cloud API',
   smsCompanionPairingKey: 'Pareamento do telemóvel SMS',
   smsRelayAdminKey: 'Chave de administração do relé SMS',
-  stripeSecretKey: 'Chave do Stripe'
+  stripeSecretKey: 'Chave do Stripe',
+  networkSnmpCommunity: 'Comunidade SNMP das antenas'
 };
 
 /** AAD de cada domínio (D2): separa tabelas/colunas, não linhas. */

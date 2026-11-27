@@ -30,7 +30,7 @@ const BACKBONE_COLUMNS = `
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
   bd.router_interface AS routerInterface,
   bd.wan_mode AS wanMode, bd.operation_mode AS operationMode,
-  bd.island, bd.zone, bd.provisional,
+  bd.island, bd.zone, bd.site_id AS siteId, bd.provisional,
   bd.created_at AS createdAt, bd.updated_at AS updatedAt,
   (SELECT COUNT(*) FROM backbone_links down
    JOIN backbone_devices dev ON dev.id = down.device_id

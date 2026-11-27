@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { HardDrive, NotebookPen, Plus, Radar, ScrollText, ShieldCheck } from 'lucide-react';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Message, SkeletonList, TabList, type DataTableColumn } from '../../components';
+import { HardDrive, NotebookPen, Plus, Radar, ScrollText, ShieldCheck, UserCheck } from 'lucide-react';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Message, Select, SkeletonList, TabList, type DataTableColumn } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
@@ -23,7 +23,39 @@ export type NetworkIncident = {
   clients: IncidentClient[];
   /** A causa que a antena Starlink deu; `null` nas quedas do backbone. */
   cause?: string | null;
+  /** Reinício, energia ou ligação, lida do uptime do equipamento; `null` na Starlink. */
+  outageCause?: OutageCause | null;
+  causeSource?: 'auto' | 'operator' | null;
+  siteName?: string | null;
+  /** Falso num reinício tão curto que a sonda não deu a queda. */
+  observedDown?: boolean;
 };
+
+export type OutageCause = 'planned' | 'reboot' | 'power' | 'link' | 'unknown';
+type OperatorCause = 'reboot' | 'power' | 'link';
+
+const CAUSE: Record<OutageCause, { label: string; tone: 'neutral' | 'warn' | 'danger' | 'info' }> = {
+  planned: { label: 'Reinício programado', tone: 'neutral' },
+  reboot: { label: 'Reinício', tone: 'info' },
+  power: { label: 'Corte de energia', tone: 'warn' },
+  link: { label: 'Queda de ligação', tone: 'danger' },
+  unknown: { label: 'Por confirmar', tone: 'neutral' }
+};
+
+export function causeText(row: NetworkIncident): string {
+  if (!row.outageCause) return row.cause ?? '—';
+  const base = CAUSE[row.outageCause].label;
+  return row.outageCause === 'power' && row.siteName ? `${base} · ${row.siteName}` : base;
+}
+
+function CauseCell({ row }: { row: NetworkIncident }) {
+  return (
+    <span className="incidents-cause" data-tone={row.outageCause ? CAUSE[row.outageCause].tone : 'neutral'}>
+      {causeText(row)}
+      {row.causeSource === 'operator' && row.outageCause !== 'planned' && <UserCheck size={12} aria-label="Escolhida pelo operador" />}
+    </span>
+  );
+}
 
 export type IncidentsResponse = { probeEnabled: boolean; windowDays: number; incidents: NetworkIncident[] };
 
@@ -54,10 +86,10 @@ const shortStamp = (value: string | null) => formatPtDateTime(value).replace(/-(
 const columns: DataTableColumn<NetworkIncident>[] = [
   { header: 'Estado', sortValue: (row) => STATUS[row.status].order, cell: (row) => <Badge tone={STATUS[row.status].tone}>{STATUS[row.status].label}</Badge> },
   { header: 'Equipamento', sortValue: (row) => row.name, cell: (row) => <strong>{row.name}</strong> },
-  { header: 'Zona', sortValue: (row) => row.zone ?? '', cell: (row) => row.zone ?? '—' },
+  { header: 'Causa', sortValue: (row) => causeText(row), cell: (row) => <CauseCell row={row} /> },
   { header: 'Início', sortValue: (row) => row.startedAt, defaultDirection: 'desc', cell: (row) => shortStamp(row.startedAt) },
   { header: 'Fim', sortValue: (row) => row.endedAt ?? '', defaultDirection: 'desc', cell: (row) => row.status === 'resolved' ? shortStamp(row.endedAt) : '—' },
-  { header: 'Duração', sortValue: (row) => row.durationSeconds ?? -1, defaultDirection: 'desc', align: 'end', cell: (row) => row.status === 'open' ? <span className="incidents-ongoing">{formatDuration(row.durationSeconds)}</span> : formatDuration(row.durationSeconds) },
+  { header: 'Duração', sortValue: (row) => row.durationSeconds ?? -1, defaultDirection: 'desc', align: 'end', cell: (row) => row.observedDown === false ? 'Curta' : row.status === 'open' ? <span className="incidents-ongoing">{formatDuration(row.durationSeconds)}</span> : formatDuration(row.durationSeconds) },
   { header: 'Clientes', sortValue: (row) => row.clients.length, defaultDirection: 'desc', align: 'end', cell: (row) => row.clients.length },
   { header: 'Arrastou', sortValue: (row) => row.draggedDevices.length, defaultDirection: 'desc', align: 'end', cell: (row) => row.draggedDevices.length }
 ];
@@ -114,6 +146,26 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 function OutagesView({ active, tabs }: ViewProps) {
   const live = useLive<IncidentsResponse>(INCIDENTS_URL, active, 60_000);
   const [selected, setSelected] = useState<NetworkIncident | null>(null);
+  const [causeError, setCauseError] = useState<string | null>(null);
+  const [savingCause, setSavingCause] = useState(false);
+  const { user } = useAuth();
+  const canWrite = !user || ['admin', 'operator'].includes(user.role);
+
+  const changeCause = async (incident: NetworkIncident, value: string) => {
+    if (incident.backboneDeviceId === null) return;
+    const cause = value === '' ? null : value as OperatorCause;
+    setSavingCause(true);
+    setCauseError(null);
+    try {
+      await networkRequest(`/outages/${incident.backboneDeviceId}/cause`, { method: 'PUT', body: { startedAt: incident.startedAt, cause } });
+      setSelected({ ...incident, outageCause: cause ?? incident.outageCause, causeSource: cause ? 'operator' : 'auto' });
+      live.reload();
+    } catch (err) {
+      setCauseError(err instanceof Error ? err.message : 'Não foi possível mudar a causa.');
+    } finally {
+      setSavingCause(false);
+    }
+  };
 
   if (!live.data) {
     return (
@@ -135,18 +187,30 @@ function OutagesView({ active, tabs }: ViewProps) {
       <DataTable stickyHeader rows={live.data.incidents} rowKey={(row) => row.key} columns={columns}
         onRowClick={setSelected} activeKey={selected?.key ?? null}
         // Cabe nos 918 px que a aba tem no ecrã de 1920 a 150%.
-        gridTemplateColumns="132px minmax(110px, 1.6fr) minmax(80px, 1fr) 98px 98px 96px 80px 80px"
+        gridTemplateColumns="132px minmax(110px, 1.3fr) minmax(120px, 1.2fr) 98px 98px 96px 80px 80px"
         empty={live.data.probeEnabled
           ? <EmptyState icon={ShieldCheck} title="Sem incidentes" description={`Nenhum equipamento do backbone nem a antena Starlink caiu nos últimos ${live.data.windowDays} dias de observação.`} />
           : <EmptyState icon={Radar} title="Sonda de rede desligada" description="Ligue a sonda em Definições." />} />
 
-      <Dialog open={selected !== null} onClose={() => setSelected(null)} size="lg"
-        eyebrow={selected ? `${STATUS[selected.status].label} · ${formatPtDateTime(selected.startedAt)} · ${formatDuration(selected.durationSeconds)}` : undefined}
+      <Dialog open={selected !== null} onClose={() => { setSelected(null); setCauseError(null); }} size="lg"
+        eyebrow={selected ? [STATUS[selected.status].label, formatPtDateTime(selected.startedAt),
+          selected.observedDown === false ? 'sem queda registada' : formatDuration(selected.durationSeconds), selected.zone].filter(Boolean).join(' · ') : undefined}
         title={selected?.name ?? ''}>
         {selected && (
           <div className="incidents-detail">
-            {selected.cause && (
-              <p className="incidents-dragged"><span className="field-label">Causa</span> {selected.cause}</p>
+            {selected.outageCause && selected.backboneDeviceId !== null && selected.outageCause !== 'planned' && canWrite ? (
+              <div className="incidents-cause-field">
+                <Select label="Causa" value={selected.causeSource === 'operator' ? selected.outageCause : ''} disabled={savingCause}
+                  onChange={(event) => { void changeCause(selected, event.target.value); }}>
+                  <option value="">{selected.causeSource === 'operator' ? 'Automática' : `Automática · ${causeText(selected)}`}</option>
+                  <option value="reboot">Reinício</option>
+                  <option value="power">Corte de energia</option>
+                  <option value="link">Queda de ligação</option>
+                </Select>
+                {causeError && <Message tone="error">{causeError}</Message>}
+              </div>
+            ) : (selected.cause || selected.outageCause) && (
+              <p className="incidents-dragged"><span className="field-label">Causa</span> {causeText(selected)}</p>
             )}
             {selected.draggedDevices.length > 0 && (
               <p className="incidents-dragged"><span className="field-label">Arrastou</span> {selected.draggedDevices.join(', ')}</p>
