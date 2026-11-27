@@ -1,4 +1,3 @@
-import { networkInterfaces } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
@@ -6,7 +5,7 @@ import { recordAudit } from '../lib/audit';
 import { authBypassed } from '../lib/auth';
 import { getLocalProtection } from '../lib/local-protection';
 import { preparePairedMobileGateway } from '../lib/mobile-device-controller';
-import { isMobileListenAddress, MobileGatewayLifecycle } from '../lib/mobile-gateway-lifecycle';
+import { isMobileListenAddress, mobileListenAddresses, MobileGatewayLifecycle } from '../lib/mobile-gateway-lifecycle';
 import { confirmSessionPassword, requireRole } from './auth';
 
 const PAIR_FIRST = 'Pareie primeiro o telemóvel com a app ISPM SMS.';
@@ -29,10 +28,7 @@ export async function registerMobileAccessRoutes(app: FastifyInstance) {
   });
   app.addHook('onClose', async () => { await lifecycle.stop(); });
 
-  app.get('/api/mobile-access', adminOnly, async () => ({
-    ...lifecycle.status(),
-    addresses: Object.values(networkInterfaces()).flatMap(entries => entries ?? []).filter(entry => isMobileListenAddress(entry.address)).map(entry => entry.address)
-  }));
+  app.get('/api/mobile-access', adminOnly, async () => ({...lifecycle.status(), addresses: mobileListenAddresses()}));
 
   app.post('/api/mobile-access/start', adminOnly, async (request, reply) => {
     if (authBypassed()) return reply.status(503).send({error: 'Autenticação obrigatória para acesso móvel.'});

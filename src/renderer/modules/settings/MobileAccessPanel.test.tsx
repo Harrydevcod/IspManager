@@ -11,13 +11,14 @@ test('ativa com password e permite desligar o acesso', async () => {
   const calls: Array<{url: string; init?: RequestInit}> = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({url, init});
-    const body = url.endsWith('/start') ? {running:true, host:'192.168.1.4', port:38421} : url.endsWith('/stop') ? {running:false, host:null, port:null} : {running:false, host:null, port:null, addresses:['192.168.1.4']};
+    const body = url.endsWith('/start') ? {running:true, host:'192.168.1.4', port:38421} : url.endsWith('/stop') ? {running:false, host:null, port:null} : {running:false, host:null, port:null, addresses:[{address:'192.168.1.4', name:'Wi-Fi'}]};
     return {ok:true, json:async () => body};
   }));
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(<MobileAccessPanel />));
+  expect(host.querySelector('option[value="192.168.1.4"]')?.textContent).toBe('Wi-Fi · 192.168.1.4');
   const password = host.querySelector('input[type="password"]') as HTMLInputElement;
   await act(async () => {
     const select = host.querySelector('select') as HTMLSelectElement;
