@@ -4,12 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## [2.77](https://github.com/Harrydevcod/IspManager/releases/tag/v2.77.0) — 2026-11-26
+## [2.77](https://github.com/Harrydevcod/IspManager/releases/tag/v2.77.0) — 2026-11-27
 
 ### Adicionado
 - **ISPM no telemóvel.** Com a app ISPM SMS 0.14, o ISPM abre no telemóvel pareado, na mesma rede local. O acesso vem desligado; liga-se em Configurações › SMS, com a password de administrador.
+- **Consumo do cliente.** Nova aba Consumo na ficha do cliente: o consumo por ciclo, por mês e por ano, a média diária e o perfil (Leve, Médio, Intenso ou Muito intenso, face aos outros clientes), com aviso quando passa do plafond.
 
 ### Alterado
+- **Aba SMS das Configurações.** Arrumada em quatro grupos (Canal, Acesso, Envio e Mensagens), tudo alinhado à esquerda, com os modelos lado a lado.
 - **Senha PPPoE.** Lê-se sem confundir I, l, 1, 0 e O, e copia-se com um clique: utilizador, senha ou os dois. As senhas novas já não usam esses caracteres.
 
 ## [2.76](https://github.com/Harrydevcod/IspManager/releases/tag/v2.76.0) — 2026-11-23
