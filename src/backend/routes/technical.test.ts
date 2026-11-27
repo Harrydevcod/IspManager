@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestNetworkSync } from '../lib/network-sync';
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -1769,7 +1770,8 @@ describe('datas do ciclo de equipamento', () => {
     const response = await items(service.lastInsertRowid, [{ catalogId: catalog.lastInsertRowid }]);
     const assignmentId = (response.json() as { assignmentIds: number[] }).assignmentIds[0];
 
-    expect(row("SELECT start_date = date('now') AS hoje FROM service_device_assignments WHERE id = ?", assignmentId))
+    // "Hoje" é o dia de Cabo Verde: o date('now') do SQLite (UTC) falhava entre as 00:00 e a 01:00 UTC.
+    expect(row(`SELECT start_date = ${SQL_BUSINESS_TODAY} AS hoje FROM service_device_assignments WHERE id = ?`, assignmentId))
       .toEqual({ hoje: 1 });
   });
 
