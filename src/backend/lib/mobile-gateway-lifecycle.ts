@@ -1,17 +1,28 @@
 import type { Server } from 'node:http';
 import type { Socket } from 'node:net';
-import { isIP } from 'node:net';
 import { networkInterfaces } from 'node:os';
+import { isPrivateIpv4 } from '../../shared/ip-range';
 
 type Prepared = { server: Server; publish: (host: string, port: number) => Promise<void> };
 type Options = { allowedAddress: (host: string) => boolean; prepare: () => Promise<Prepared> };
 
 type InterfaceAddress = {address: string; family: string; internal: boolean};
-export function isMobileListenAddress(host: string, entries: InterfaceAddress[] = Object.values(networkInterfaces()).flatMap(value => value ?? [])): boolean {
-  if (isIP(host) !== 4 || host === '0.0.0.0' || host.startsWith('127.')) return false;
-  const first = Number(host.split('.')[0]);
-  if (first < 1 || first > 223) return false;
-  return entries.some(item => item.family === 'IPv4' && !item.internal && item.address === host);
+type Interfaces = Record<string, InterfaceAddress[] | undefined>;
+export type MobileListenAddress = {address: string; name: string};
+
+// Placas só entre o PC e as suas máquinas virtuais: o telemóvel nunca lá chega.
+// ponytail: lista por nome; se aparecer outra placa virtual, junta-se aqui.
+const HOST_ONLY = /vEthernet|WSL|Hyper-V|VirtualBox|VMware|Loopback/i;
+
+/** Redes locais privadas onde o telemóvel pode chegar, com o nome da placa. VPN em CGNAT (Tailscale) e IPs públicos ficam de fora. */
+export function mobileListenAddresses(interfaces: Interfaces = networkInterfaces()): MobileListenAddress[] {
+  return Object.entries(interfaces).flatMap(([name, entries]) => (entries ?? [])
+    .filter(item => item.family === 'IPv4' && !item.internal && isPrivateIpv4(item.address) && !HOST_ONLY.test(name))
+    .map(item => ({address: item.address, name})));
+}
+
+export function isMobileListenAddress(host: string, interfaces?: Interfaces): boolean {
+  return mobileListenAddresses(interfaces).some(item => item.address === host);
 }
 
 /** Explicit, process-local activation; stop also closes active connections. */

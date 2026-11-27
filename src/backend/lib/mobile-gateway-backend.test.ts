@@ -97,7 +97,7 @@ describe('mobile gateway and real backend', () => {
       expect((await app.inject({method:'POST', url:'/api/mobile-access/stop'})).statusCode).toBe(401);
       const invalidStart = await app.inject({method:'POST', url:'/api/mobile-access/start', headers:{authorization:`Bearer ${login.body.token}`}, payload:{host:'0.0.0.0', port:38421, confirmPassword:'supersecret'}});
       expect(invalidStart.statusCode).toBe(400);
-      const localAddress = mobileStatus.json().addresses[0] as string | undefined;
+      const localAddress = mobileStatus.json().addresses[0]?.address as string | undefined;
       if (localAddress) {
         const wrongPassword = await app.inject({method:'POST', url:'/api/mobile-access/start', headers:{authorization:`Bearer ${login.body.token}`}, payload:{host:localAddress, port:38421, confirmPassword:'incorrect'}});
         expect(wrongPassword.statusCode).toBe(403);

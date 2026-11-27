@@ -3,7 +3,7 @@ import { Button, Field, Message, Select } from '../../components';
 import { apiUrl } from '../../lib/api';
 import { authFetch } from '../../lib/auth';
 
-type Status = {running: boolean; host: string | null; port: number | null; addresses: string[]};
+type Status = {running: boolean; host: string | null; port: number | null; addresses: Array<{address: string; name: string}>};
 const API = apiUrl('/api/mobile-access');
 
 export function MobileAccessPanel() {
@@ -25,7 +25,7 @@ export function MobileAccessPanel() {
         const next = await response.json() as Status;
         if (!active || generation !== epoch.current) return;
         setStatus(next);
-        setAddress(current => next.addresses.includes(current) ? current : '');
+        setAddress(current => next.addresses.some(item => item.address === current) ? current : '');
         setError(current => current === 'Não foi possível consultar o acesso móvel.' ? '' : current);
       } catch { if (active && generation === epoch.current) setError('Não foi possível consultar o acesso móvel.'); }
     }
@@ -70,7 +70,7 @@ export function MobileAccessPanel() {
         <div className="sms-relay-fields mobile-access-fields">
           <Select label="Rede do computador" value={address} onChange={event => setAddress(event.target.value)} disabled={busy || status.addresses.length === 0}>
             <option value="">{status.addresses.length === 0 ? 'Sem rede disponível' : 'Escolha a rede'}</option>
-            {status.addresses.map(value => <option key={value} value={value}>{value}</option>)}
+            {status.addresses.map(item => <option key={item.address} value={item.address}>{item.name} · {item.address}</option>)}
           </Select>
           <Field label="Porta" inputMode="numeric" value={port} onChange={event => setPort(event.target.value)} onKeyDown={preventFormSubmit} disabled={busy} />
           <Field label="Password de administrador" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} onKeyDown={preventFormSubmit} disabled={busy} />

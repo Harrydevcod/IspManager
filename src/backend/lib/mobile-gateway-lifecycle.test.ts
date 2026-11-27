@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { MobileGatewayLifecycle, isMobileListenAddress } from './mobile-gateway-lifecycle';
+import { MobileGatewayLifecycle, isMobileListenAddress, mobileListenAddresses } from './mobile-gateway-lifecycle';
 
 describe('mobile gateway lifecycle', () => {
   it('starts only on request, publishes after binding, and stops listening', async () => {
@@ -45,17 +45,21 @@ describe('mobile gateway lifecycle', () => {
     await expect(lifecycle.start('0.0.0.0', 1234)).rejects.toThrow('MOBILE_GATEWAY_ADDRESS_INVALID');
   });
 
-  it('accepts only a concrete non-loopback local IPv4 interface', () => {
-    const entries = [
-      {address:'192.168.1.8', family:'IPv4', internal:false},
-      {address:'127.0.0.1', family:'IPv4', internal:true},
-      {address:'2001:db8::1', family:'IPv6', internal:false}
-    ];
-    expect(isMobileListenAddress('192.168.1.8', entries)).toBe(true);
-    expect(isMobileListenAddress('0.0.0.0', entries)).toBe(false);
-    expect(isMobileListenAddress('127.0.0.1', entries)).toBe(false);
-    expect(isMobileListenAddress('192.168.1.9', entries)).toBe(false);
-    expect(isMobileListenAddress('2001:db8::1', entries)).toBe(false);
+  it('lists only private LAN interfaces the phone can reach, with their names', () => {
+    const v4 = (address: string, internal = false) => ({address, family:'IPv4', internal});
+    const interfaces = {
+      'Wi-Fi': [v4('192.168.1.8'), {address:'2001:db8::1', family:'IPv6', internal:false}],
+      'Ethernet': [v4('10.0.0.5')],
+      'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
+      'vEthernet (WSL)': [v4('172.20.16.1')],
+      'Tailscale': [v4('100.71.9.49')],
+      'Público': [v4('41.221.1.2')]
+    };
+    expect(mobileListenAddresses(interfaces)).toEqual([{address:'192.168.1.8', name:'Wi-Fi'}, {address:'10.0.0.5', name:'Ethernet'}]);
+    expect(isMobileListenAddress('192.168.1.8', interfaces)).toBe(true);
+    for (const host of ['0.0.0.0', '127.0.0.1', '192.168.1.9', '2001:db8::1', '172.20.16.1', '100.71.9.49', '41.221.1.2']) {
+      expect(isMobileListenAddress(host, interfaces)).toBe(false);
+    }
   });
 
   it('closes existing sockets on stop', async () => {
