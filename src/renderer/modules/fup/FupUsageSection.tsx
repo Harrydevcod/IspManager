@@ -7,7 +7,6 @@ import {
   EVENT_LABEL, STATE_LABEL, formatGb, fupRequest, gbLabel, perGbOf, usageTone,
   type FupEvent, type FupThresholds, type FupUsage
 } from './fup-api';
-import { UsageHistory } from './UsageHistory';
 import './fup.css';
 
 type Detail = { usage: FupUsage; thresholds: FupThresholds; events: FupEvent[] };
@@ -164,8 +163,6 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
           ))}
         </ol>
       )}
-
-      <UsageHistory serviceId={serviceId} />
     </section>
   );
 }

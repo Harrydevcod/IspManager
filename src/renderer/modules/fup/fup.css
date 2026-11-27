@@ -200,3 +200,42 @@
 @media (max-width: 640px) {
   .usage-history-table tbody th .badge { display: none; }
 }
+
+/* Gráfico do consumo: o traço do gráfico de receita (.sparkline). Cores validadas com o
+   validador da skill dataviz (faixa de luminosidade, croma, CVD, contraste) contra cada superfície. */
+.usage-bars { --usage-down: var(--accent); --usage-up: #22a88f; }
+:root[data-theme="light"] .usage-bars { --usage-up: #2a7fd0; }
+.usage-bars svg { height: 200px; }
+.usage-bars svg .bar-seg-down { fill: var(--usage-down); fill-opacity: 0.85; }
+.usage-bars svg .bar-seg-up { fill: var(--usage-up); fill-opacity: 0.85; }
+.usage-bars svg .bar-hovered .bar-seg,
+.usage-bars svg .bar-current .bar-seg { fill-opacity: 1; }
+.usage-bars .bar-tooltip-rows .dot-down { background: var(--usage-down); }
+.usage-bars .bar-tooltip-rows .dot-up { background: var(--usage-up); }
+.usage-bars .legend-down::before { background: var(--usage-down); }
+.usage-bars .legend-up::before { background: var(--usage-up); }
+
+/* Ficha do cliente: abas Ficha | Consumo. */
+.client-sheet-tabs { margin-bottom: var(--space-4); }
+.client-usage-tab { display: grid; gap: var(--space-3); min-width: 0; }
+.client-usage-body { display: grid; gap: var(--space-4); min-width: 0; }
+.client-usage-controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-3); }
+.client-usage-controls .field { flex: 0 1 18rem; min-width: 0; }
+/* Perfil: uma faixa de números, um rótulo por cima de cada; empilha em grelha quando estreito. */
+.client-usage-profile {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(130px, 40%), 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+}
+.client-usage-profile > div { display: grid; gap: var(--space-1); align-content: start; min-width: 0; }
+.client-usage-profile dt { color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.client-usage-profile dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5); font-variant-numeric: tabular-nums; font-weight: 550; }
+.client-usage-profile small { color: var(--text-3); font-weight: 400; }
+/* O .segmented-tabs traz margem de módulo (space-6); aqui o espaço vem da grelha. */
+.client-sheet-tabs.segmented-tabs { margin: 0 0 var(--space-4); }
+.client-usage-controls .segmented-tabs { margin: 0; }
+.client-usage-profile .badge { white-space: nowrap; }

@@ -2,7 +2,7 @@ import { apiUrl } from '../lib/api';
 import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Smartphone, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, ColumnPicker, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Badge, BulkActionBar, Button, ColumnPicker, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, TabList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { NewTicketDialog } from './support/NewTicketDialog';
@@ -15,6 +15,10 @@ import {
   BEHAVIOUR_HEADERS, BEHAVIOUR_HIDDEN, BEHAVIOUR_WIDTHS, behaviourColumns
 } from './finance/behaviourColumns';
 import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
+import { ClientUsageTab } from './fup/ClientUsageTab';
+
+type ClientSheetTab = 'ficha' | 'consumo';
+const CLIENT_SHEET_TABS = [{ id: 'ficha', label: 'Ficha' }, { id: 'consumo', label: 'Consumo' }] as const;
 import { formatGb, fupRequest, perGbOf, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -155,6 +159,14 @@ export function ClientsModule({
   const [fupUsage, setFupUsage] = useState<FupUsage[]>([]);
   const [fupThresholds, setFupThresholds] = useState<FupThresholds>({ aviso: 80, limitacao: 100 });
   const [fupFilter, setFupFilter] = useState<'all' | 'aviso' | 'limited'>('all');
+  /** Aba da ficha; volta a "Ficha" ao abrir outro cliente. */
+  const [clientTab, setClientTab] = useState<ClientSheetTab>('ficha');
+  useEffect(() => { setClientTab('ficha'); }, [selectedClient?.id]);
+  const selectedUsageServices = useMemo(
+    () => (selectedClient ? fupUsage.filter((row) => row.clientId === selectedClient.id)
+      .map((row) => ({ serviceId: row.serviceId, label: [row.username, row.planName].filter(Boolean).join(' · ') })) : []),
+    [fupUsage, selectedClient]
+  );
   const [statusFilter, setStatusFilter] = useState<'all' | Client['status']>(
     DEFAULT_CLIENT_STATUS_FILTER
   );
@@ -662,6 +674,14 @@ export function ClientsModule({
             </>
           }
         >
+          {selectedUsageServices.length > 0 && (
+            <TabList segmented idPrefix="client-sheet" label="Ficha do cliente" className="client-sheet-tabs" tabs={CLIENT_SHEET_TABS} value={clientTab} onChange={setClientTab} />
+          )}
+          {clientTab === 'consumo' && selectedUsageServices.length > 0 ? (
+            <div id="client-sheet-panel-consumo" role="tabpanel" aria-labelledby="client-sheet-tab-consumo">
+              <ClientUsageTab key={selectedClient.id} services={selectedUsageServices} />
+            </div>
+          ) : (
           <div className="client-detail">
             {canManageClients && !selectedClient.systemKind && onCreateProposal && <Button variant="secondary" size="sm" leadingIcon={<Plus size={16} aria-hidden />} onClick={() => onCreateProposal(selectedClient)}>Criar proposta</Button>}
           <dl>
@@ -801,6 +821,7 @@ export function ClientsModule({
           )}
           <SmsInbox clientId={selectedClient.id} />
           </div>
+          )}
         </Dialog>
       )}
 

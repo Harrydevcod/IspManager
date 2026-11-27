@@ -116,7 +116,9 @@ export function loadServiceUsageCycles(db: Database.Database, serviceId: number,
   const first = service
     ? (db.prepare('SELECT MIN(day) AS day FROM client_traffic_daily WHERE service_id = ?').get(serviceId) as { day: string | null }).day
     : null;
-  if (!service || !first) return { referenceGb: service?.referenceGb ?? 0, bytesPerGb: perGb, cycles: [] as UsageCycle[] };
+  if (!service || !first) {
+    return { referenceGb: service?.referenceGb ?? 0, bytesPerGb: perGb, cycles: [] as UsageCycle[], daily: [] as UsageDay[], profile: null };
+  }
   const usage = db.prepare(`SELECT COUNT(*) AS days, COALESCE(SUM(tx_bytes), 0) AS down, COALESCE(SUM(rx_bytes), 0) AS up
     FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
   const events = db.prepare('SELECT kind FROM fup_events WHERE service_id = ? AND period = ?');
@@ -135,5 +137,70 @@ export function loadServiceUsageCycles(db: Database.Database, serviceId: number,
     const previousDay = new Date(Date.UTC(Number(cycle.start.slice(0, 4)), Number(cycle.start.slice(5, 7)) - 1, startDay - 1)).toISOString().slice(0, 10);
     cycle = cycleFor(previousDay, startDay);
   }
-  return { referenceGb: service.referenceGb, bytesPerGb: perGb, cycles };
+  const today = dayInZone(now, settings.fuso_horario);
+  const daily = db.prepare(`SELECT day, tx_bytes AS downBytes, rx_bytes AS upBytes FROM client_traffic_daily
+    WHERE service_id = ? AND day >= ? ORDER BY day`).all(serviceId, shiftDay(today, -(DAILY_HISTORY_DAYS - 1))) as UsageDay[];
+  const profile = {
+    ...classifyAgainstBase(db, serviceId, today),
+    overPlafond: overPlafond(cycles, service.referenceGb, today)
+  };
+  return { referenceGb: service.referenceGb, bytesPerGb: perGb, cycles, daily, profile };
+}
+
+export type UsageDay = { day: string; downBytes: number; upBytes: number };
+export type UsageClass = 'LEVE' | 'MEDIO' | 'INTENSO' | 'MUITO_INTENSO' | 'SEM_DADOS';
+
+/** Série diária devolvida ao ecrã (mês e ano agrupam-se lá): 24 meses. */
+const DAILY_HISTORY_DAYS = 731;
+/** Janela do perfil, mínimo de dias medidos por serviço e de serviços para comparar. */
+export const PROFILE_WINDOW_DAYS = 90;
+export const PROFILE_MIN_DAYS = 14;
+export const PROFILE_MIN_PEERS = 8;
+
+function shiftDay(day: string, delta: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Posição numa base (Sandvine/Nokia: percentis da própria rede). `percentile` = % dos outros
+ * serviços com média diária abaixo desta. Leve <P25, Médio <P75, Intenso <P95, Muito intenso ≥P95.
+ */
+export function classifyAverage(peers: number[], mine: number): { percentile: number; klass: Exclude<UsageClass, 'SEM_DADOS'> } {
+  const others = peers.length - 1;
+  const below = peers.filter((value) => value < mine).length;
+  const percentile = others > 0 ? Math.round((below / others) * 100) : 0;
+  const klass = percentile >= 95 ? 'MUITO_INTENSO' : percentile >= 75 ? 'INTENSO' : percentile >= 25 ? 'MEDIO' : 'LEVE';
+  return { percentile, klass };
+}
+
+/**
+ * Média diária dos últimos 90 dias (só dias medidos: o ISPM fechado deixa buracos) de cada
+ * serviço PPPoE ativo com pelo menos 14 dias medidos, e a classe deste serviço nessa base.
+ * ponytail: recalcula a base a cada pedido (um GROUP BY sobre dezenas de serviços); cache diária se forem milhares.
+ */
+function classifyAgainstBase(db: Database.Database, serviceId: number, today: string) {
+  const rows = db.prepare(`SELECT d.service_id AS serviceId, COUNT(*) AS days, SUM(d.tx_bytes + d.rx_bytes) AS total
+    FROM client_traffic_daily d JOIN services s ON s.id = d.service_id
+    WHERE s.status = 'active' AND s.pppoe_username IS NOT NULL AND TRIM(s.pppoe_username) <> '' AND d.day >= ? AND d.day <= ?
+    GROUP BY d.service_id HAVING COUNT(*) >= ?`).all(shiftDay(today, -(PROFILE_WINDOW_DAYS - 1)), today, PROFILE_MIN_DAYS) as Array<{ serviceId: number; days: number; total: number }>;
+  const own = rows.find((row) => row.serviceId === serviceId);
+  const peers = rows.map((row) => row.total / row.days);
+  if (!own || peers.length < PROFILE_MIN_PEERS) {
+    return { avgDailyBytes: own ? own.total / own.days : null, percentile: null, klass: 'SEM_DADOS' as UsageClass, peers: peers.length };
+  }
+  const avgDailyBytes = own.total / own.days;
+  return { avgDailyBytes, ...classifyAverage(peers, avgDailyBytes), peers: peers.length };
+}
+
+/** Acima do plafond: o último ciclo completo passou os 100%, ou o atual, projetado ao fim do ciclo, vai passar. */
+export function overPlafond(cycles: UsageCycle[], referenceGb: number, today: string): boolean {
+  if (referenceGb <= 0 || cycles.length === 0) return false;
+  const [current, previous] = cycles;
+  if (previous && previous.percent > 100) return true;
+  const elapsed = Math.round((Date.parse(today) - Date.parse(current.start)) / 86_400_000) + 1;
+  const length = Math.round((Date.parse(current.end) - Date.parse(current.start)) / 86_400_000) + 1;
+  // Com menos de 7 dias de ciclo a projeção é ruído (um dia forte dá 300%).
+  return current.percent > 100 || (elapsed >= 7 && (current.percent * length) / elapsed > 100);
 }
