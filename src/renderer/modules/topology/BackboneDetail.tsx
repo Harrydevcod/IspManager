@@ -197,11 +197,10 @@ export function BackboneDetail({
             </div>
             <div><dt>Ilha</dt><dd>{fact(backbone.island)}</dd></div>
             <div><dt>Zona</dt><dd>{fact(backbone.zone)}</dd></div>
-            {canManage ? (
-              <div className="backbone-fact-wide"><SitePicker deviceId={backbone.id} siteId={backbone.siteId ?? null} canManage /></div>
-            ) : (
-              <div><dt>Local</dt><dd><SitePicker deviceId={backbone.id} siteId={backbone.siteId ?? null} canManage={false} /></dd></div>
-            )}
+            <div className={canManage ? 'backbone-fact-wide' : undefined}>
+              <dt>Local</dt>
+              <dd><SitePicker deviceId={backbone.id} siteId={backbone.siteId ?? null} canManage={canManage} /></dd>
+            </div>
             <div className="backbone-fact-wide"><dt>Notas</dt><dd>{fact(backbone.notes)}</dd></div>
           </dl>
         </section>

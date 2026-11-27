@@ -770,6 +770,17 @@
 .incidents-cause[data-tone='warn']::before { background: var(--warn); }
 .incidents-cause[data-tone='info']::before { background: var(--accent); }
 .incidents-cause svg { flex: none; color: var(--text-3); }
+/* Na tabela a célula corta um `span` sozinho com reticências; "Corte de energia · Torre de
+   Achada" tem de se ler inteiro, por isso dobra, com o ponto à altura da primeira linha. */
+.data-table .data-table-cell > span.incidents-cause:only-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  overflow: visible;
+  white-space: normal;
+}
+.data-table .data-table-cell > span.incidents-cause:only-child::before { margin-top: calc(0.5lh - var(--space-1-5) / 2); }
+.data-table .data-table-cell > span.incidents-cause:only-child svg { margin-top: calc(0.5lh - 6px); }
 
 /* Local do equipamento: escolhe-se da lista; um novo escreve-se na mesma linha. */
 .site-picker {

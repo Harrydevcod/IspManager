@@ -58,7 +58,7 @@ export function SitePicker({ deviceId, siteId, canManage, onChanged }: { deviceI
   return (
     <div className="site-picker">
       {draft === null ? (
-        <Select label="Local" value={value} disabled={busy || !siteList}
+        <Select label="Local" hideLabel value={value} disabled={busy || !siteList}
           onChange={(event) => {
             if (event.target.value === NEW_SITE) { setDraft(''); return; }
             void save(event.target.value === '' ? null : Number(event.target.value));
