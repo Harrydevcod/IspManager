@@ -5122,6 +5122,23 @@ label.field-toggle {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+/* Credenciais lidas por pessoas: mono sem ambiguidade (0 cortado, sem ligaduras). */
+.credential-list { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.credential-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
+.credential-value {
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  font-variant-ligatures: none;
+  font-feature-settings: "zero";
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+/* Blocos de 4 só com margem: o texto copiado não leva espaços. */
+.credential-group { display: inline-block; }
+.credential-group + .credential-group { margin-left: 0.5ch; }
 .technical-item-notes {
   margin: 0;
   font-size: var(--fs-sm);

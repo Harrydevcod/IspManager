@@ -1,8 +1,9 @@
 import { apiUrl } from '../../lib/api';
-import { Eye, Plus } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { Check, Copy, Eye, Plus } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Message, Select, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
+import { copyText } from '../../lib/clipboard';
 import { downloadAuthenticated, printAuthenticated } from '../../lib/download';
 
 const API = apiUrl('/api/services');
@@ -144,7 +145,12 @@ export function RevealPppoePassword({ serviceId }: { serviceId: number }) {
         size="sm"
         closeOnBackdrop={!busy}
         actions={revealed
-          ? <Button onClick={close}>Fechar</Button>
+          ? (
+            <>
+              <CopyAllButton text={`Utilizador: ${revealed.username ?? '-'}\nSenha: ${revealed.password}`} />
+              <Button onClick={close}>Fechar</Button>
+            </>
+          )
           : (
             <>
               <Button variant="secondary" onClick={close} disabled={busy}>Cancelar</Button>
@@ -153,9 +159,17 @@ export function RevealPppoePassword({ serviceId }: { serviceId: number }) {
           )}
       >
         {revealed ? (
-          <dl className="technical-item-meta">
-            <div><dt>Utilizador PPPoE</dt><dd><code>{revealed.username ?? '-'}</code></dd></div>
-            <div><dt>Senha PPPoE</dt><dd><code>{revealed.password}</code></dd></div>
+          <dl className="technical-item-meta credential-list">
+            <div><dt>Utilizador PPPoE</dt><dd className="credential-row">
+              <span className="credential-value">{revealed.username ?? '-'}</span>
+              {revealed.username && <CopyValueButton label="Copiar utilizador" text={revealed.username} />}
+            </dd></div>
+            <div><dt>Senha PPPoE</dt><dd className="credential-row">
+              <span className="credential-value" aria-label={revealed.password}>
+                {revealed.password.match(/.{1,4}/gu)?.map((group, index) => <span key={index} className="credential-group">{group}</span>)}
+              </span>
+              <CopyValueButton label="Copiar senha" text={revealed.password} />
+            </dd></div>
           </dl>
         ) : (
           <form id="pppoe-reveal-form" className="client-form" onSubmit={submit}>
@@ -173,6 +187,46 @@ export function RevealPppoePassword({ serviceId }: { serviceId: number }) {
         )}
       </Dialog>
     </>
+  );
+}
+
+/** Copia e confirma: ícone Check durante 2 s e o toast. */
+function useCopy(text: string) {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  async function copy() {
+    if (await copyText(text)) {
+      setCopied(true);
+      toast('Copiado', 'success');
+    } else {
+      toast('Não foi possível copiar.', 'error');
+    }
+  }
+  return { copied, copy };
+}
+
+function CopyValueButton({ label, text }: { label: string; text: string }) {
+  const { copied, copy } = useCopy(text);
+  const Icon = copied ? Check : Copy;
+  return (
+    <Button variant="icon" size="sm" aria-label={label} title={label} onClick={() => void copy()}>
+      <Icon size={16} aria-hidden />
+    </Button>
+  );
+}
+
+function CopyAllButton({ text }: { text: string }) {
+  const { copied, copy } = useCopy(text);
+  const Icon = copied ? Check : Copy;
+  return (
+    <Button variant="secondary" title="Copiar utilizador e senha" leadingIcon={<Icon size={14} aria-hidden />} onClick={() => void copy()}>
+      Copiar tudo
+    </Button>
   );
 }
 

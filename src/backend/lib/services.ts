@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { validateAssignmentDates } from '../../shared/assignment-dates';
@@ -94,8 +94,12 @@ export function freePppoeUsername(db: Database, input: Parameters<typeof pppoeUs
   return taken ? `${username}-${input.serviceId}` : username;
 }
 
+/** Sem I l 1 O 0 o nem - _: a senha é lida e escrita à mão no equipamento do cliente. */
+export const PPPOE_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+/** 12 caracteres (~69,7 bits), três blocos de 4 no ecrã; randomInt não tem viés de módulo. */
 export function generatePppoePassword(): string {
-  return randomBytes(9).toString('base64url');
+  return Array.from({ length: 12 }, () => PPPOE_PASSWORD_ALPHABET[randomInt(PPPOE_PASSWORD_ALPHABET.length)]).join('');
 }
 
 /** Verdadeiro quando o controlo de acesso no MikroTik está ligado nas definições. */

@@ -83,6 +83,26 @@ describe('RevealPppoePassword', () => {
     expect((document.querySelector('input[type="password"]') as HTMLInputElement).value).toBe('');
   });
 
+  test('mostra a senha em blocos e copia os valores exatos, sem espaços', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    answer = { status: 200, body: { username: 'skn031', password: 'sPRGnTjkGMZa' } };
+    await mount(<RevealPppoePassword serviceId={4} />);
+    await click('Mostrar');
+    await type(document.querySelector('input[type="password"]')!, 'supersecret');
+    await submit('pppoe-reveal-form');
+
+    expect([...document.querySelectorAll('.credential-group')].map((group) => group.textContent)).toEqual(['sPRG', 'nTjk', 'GMZa']);
+    expect(document.querySelectorAll('.credential-value')[1].textContent).toBe('sPRGnTjkGMZa');
+
+    const byLabel = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+    await act(async () => { byLabel('Copiar senha').click(); });
+    await act(async () => { byLabel('Copiar utilizador').click(); });
+    await click('Copiar tudo');
+    expect(writeText.mock.calls.map(([value]) => value)).toEqual(['sPRGnTjkGMZa', 'skn031', 'Utilizador: skn031\nSenha: sPRGnTjkGMZa']);
+    expect(document.body.textContent).toContain('Copiado');
+  });
+
   test('uma recusa fica no campo e não mostra nada', async () => {
     answer = { status: 401, body: { error: 'Password incorreta.' } };
     await mount(<RevealPppoePassword serviceId={4} />);
