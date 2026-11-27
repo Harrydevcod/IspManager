@@ -104,8 +104,13 @@ describe('SmsTab monthly delivery report', () => {
       '<section class="sms-delivery-report" aria-labelledby="sms-delivery-report-title">'
     );
     expect(html).toContain(
-      '<h3 id="sms-delivery-report-title">Relatório de entrega de SMS</h3>'
+      '<h3 id="sms-delivery-report-title">Relatório e cadência</h3>'
     );
+    // Quatro grupos, pela ordem do trabalho: ligar, dar acesso, enviar, escrever.
+    expect([...html.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1])).toEqual(
+      expect.arrayContaining(['Telemóvel ISPM SMS', 'Relatório e cadência', 'Modelos de SMS'])
+    );
+    expect(html).toContain('class="sms-templates"');
     expect(html).toContain('>Mês</span>');
     expect(html).toContain('type="month"');
     expect(html).toContain('value="2026-07"');

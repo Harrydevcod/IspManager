@@ -29,9 +29,11 @@ describe('SMS report card styles', () => {
   });
 
   test('keeps hierarchy and semantic color restrained', () => {
-    expect(declarations('.sms-delivery-report h3')).toMatch(
+    // O título do relatório é agora o do grupo (settings-group-head), como na aba Pagamento.
+    expect(declarations('.settings-group-head h3')).toMatch(
       /color:\s*var\(--text\)/
     );
+    expect(styles).not.toContain('.sms-delivery-report-eyebrow');
     expect(declarations('.sms-queue-stat-value')).toMatch(
       /font-size:\s*var\(--fs-xl\)/
     );
