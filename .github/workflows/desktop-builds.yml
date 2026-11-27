@@ -56,11 +56,13 @@ jobs:
         run: |
           npx electron-rebuild -f -w better-sqlite3 --arch arm64
           npx electron-builder --mac --arm64 --publish never
+          node scripts/verify-packaged-deps.cjs release/mac-arm64/ISPM.app/Contents/Resources/app.asar
 
       - name: Empacotar x64 (Intel)
         run: |
           npx electron-rebuild -f -w better-sqlite3 --arch x64
           npx electron-builder --mac --x64 --publish never
+          node scripts/verify-packaged-deps.cjs release/mac/ISPM.app/Contents/Resources/app.asar
 
       - name: Anexar DMG à release
         env:
@@ -104,6 +106,7 @@ jobs:
         run: |
           npx electron-rebuild -f -w better-sqlite3 --arch x64
           npx electron-builder --linux --x64 --publish never
+          node scripts/verify-packaged-deps.cjs release/linux-unpacked/resources/app.asar
 
       - name: Anexar AppImage + feed de update à release
         env:
