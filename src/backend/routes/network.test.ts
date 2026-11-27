@@ -43,6 +43,23 @@ describe('GET /api/network/router/clients/usage', () => {
   });
 });
 
+describe('GET /api/services/:id/usage-cycles', () => {
+  test('devolve o histórico do serviço e recusa um id inválido', async () => {
+    db.prepare("INSERT INTO clients (client_code, full_name) VALUES ('C9002', 'Rui')").run();
+    const { id } = db.prepare("INSERT INTO services (client_id, pppoe_username, status) VALUES ((SELECT id FROM clients WHERE client_code = 'C9002'), 'rui', 'active') RETURNING id").get() as { id: number };
+    db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (date(\'now\'), ?, 1, 2)').run(id);
+    const response = await app.inject(`/api/services/${id}/usage-cycles`);
+    expect(response.statusCode).toBe(200);
+    // O dia UTC pode cair no ciclo anterior perto da meia-noite de Cabo Verde: soma-se tudo.
+    const cycles = response.json().cycles as Array<{ current: boolean; downBytes: number; upBytes: number }>;
+    expect(cycles[0].current).toBe(true);
+    expect(cycles.reduce((sum, c) => sum + c.downBytes * 10 + c.upBytes, 0)).toBe(21);
+    expect((await app.inject('/api/services/abc/usage-cycles')).statusCode).toBe(400);
+    db.prepare('DELETE FROM services WHERE id = ?').run(id);
+    db.prepare("DELETE FROM clients WHERE client_code = 'C9002'").run();
+  });
+});
+
 describe('GET /api/network/incidents', () => {
   test('responde sem sonda e recusa uma janela inválida', async () => {
     const response = await app.inject('/api/network/incidents');

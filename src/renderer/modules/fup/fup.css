@@ -178,3 +178,25 @@
   display: grid;
   gap: var(--space-3);
 }
+
+/* Histórico ciclo a ciclo, por baixo do ciclo atual: o mesmo traço da tabela do comportamento
+   de pagamento. Larga demais para o ecrã, desliza dentro da secção, nunca a página. */
+.usage-history { display: grid; gap: var(--space-2); margin-top: var(--space-4); min-width: 0; }
+.usage-history-scroll { overflow-x: auto; min-width: 0; }
+.usage-history-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+.usage-history-table th,
+.usage-history-table td { border-bottom: 1px solid var(--border); padding: var(--space-2); text-align: right; white-space: nowrap; }
+.usage-history-table thead th { color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.usage-history-table thead th:first-child,
+.usage-history-table tbody th { text-align: left; }
+.usage-history-table tbody th { font-weight: 500; }
+.usage-history-table tbody td,
+.usage-history-table tbody th { font-variant-numeric: tabular-nums; }
+.usage-history-table tbody tr:last-child > * { border-bottom: 0; }/* Ao deslizar (420 px), o ciclo fica à vista: sem ele os números não dizem de quando são. */
+.usage-history-table thead th:first-child,
+.usage-history-table tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.usage-history-table tbody tr[aria-current='true'] > * { background: color-mix(in oklab, var(--accent) 7%, var(--surface)); }
+/* Estreito: o selo "Atual" sai e fica só a linha realçada; a coluna do ciclo não come a tabela. */
+@media (max-width: 640px) {
+  .usage-history-table tbody th .badge { display: none; }
+}

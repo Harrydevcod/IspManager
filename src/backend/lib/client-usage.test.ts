@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { collectClientUsage, loadClientUsage, parseClientUsageFile } from './client-usage';
+import { collectClientUsage, loadClientUsage, loadServiceUsageCycles, parseClientUsageFile } from './client-usage';
 import { utcDay } from './wan-usage';
 import { loadFupUsage } from './fup';
 import { readFupSettings } from './fup-settings';
@@ -77,6 +77,35 @@ describe('consumo PPPoE', () => {
     expect(loadClientUsage(db, at('2026-11-14'))).toHaveLength(0);
     db.prepare("INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES ('2026-11-02', (SELECT id FROM services), 1, 1)").run();
     expect(loadClientUsage(db, at('2026-11-14'))).toHaveLength(1);
+  });
+
+  test('histórico ciclo a ciclo: do atual para trás, fronteiras certas, para no primeiro dia medido', () => {
+    db.prepare('UPDATE services SET fup_cycle_day = 5').run();
+    const id = (db.prepare('SELECT id FROM services').get() as { id: number }).id;
+    const day = db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)');
+    day.run('2026-09-20', id, 1e9, 10e9); // ciclo 05-09 a 04-10, o primeiro medido
+    day.run('2026-10-04', id, 1e9, 20e9); // último dia desse ciclo
+    day.run('2026-10-05', id, 2e9, 30e9); // primeiro dia do ciclo seguinte
+    day.run('2026-11-14', id, 3e9, 40e9); // ciclo atual
+    db.prepare("INSERT INTO fup_events (service_id, period, kind) VALUES (?, '2026-10', 'AVISO'), (?, '2026-10', 'LIMITADO')").run(id, id);
+    const now = at('2026-11-14');
+
+    const { cycles } = loadServiceUsageCycles(db, id, now);
+    expect(cycles.map((c) => [c.start, c.end, c.current, c.downBytes, c.upBytes, c.days, c.fup])).toEqual([
+      ['2026-11-05', '2026-12-04', true, 40e9, 3e9, 1, null],
+      ['2026-10-05', '2026-11-04', false, 30e9, 2e9, 1, 'LIMITADO'],
+      ['2026-09-05', '2026-10-04', false, 30e9, 2e9, 2, null]
+    ]);
+    const [fup] = loadFupUsage(db, now, readFupSettings(db), { serviceId: id });
+    expect(cycles[0].percent).toBe(fup.percent);
+  });
+
+  test('histórico vazio sem PPPoE ou sem medição', () => {
+    const id = (db.prepare('SELECT id FROM services').get() as { id: number }).id;
+    expect(loadServiceUsageCycles(db, id, at('2026-11-14')).cycles).toEqual([]);
+    db.prepare('UPDATE services SET pppoe_username = NULL').run();
+    db.prepare("INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES ('2026-11-10', ?, 1, 1)").run(id);
+    expect(loadServiceUsageCycles(db, id, at('2026-11-14')).cycles).toEqual([]);
   });
 
   test('dia UTC', () => {

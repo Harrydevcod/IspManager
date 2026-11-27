@@ -63,7 +63,7 @@ import { bytesPerGb, readFupSettings } from '../lib/fup-settings';
 import { loadOperatorPool } from '../lib/fup';
 
 import { installUsageCounter } from '../lib/usage-counter';
-import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
+import { collectClientUsage, loadClientUsage, loadServiceUsageCycles } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
 import { applyPlanProfile, auditMetadata, describeAction, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
@@ -653,6 +653,12 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
   app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsageWithPackage(getSqliteDatabase()));
   app.get('/api/network/router/clients/usage', adminOnly, async () => loadClientUsage(getSqliteDatabase()));
+  // Histórico do consumo de um serviço, ciclo a ciclo (ficha do serviço).
+  app.get('/api/services/:id/usage-cycles', readOnly, async (request, reply) => {
+    const parsed = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+    if (!parsed.success) return reply.status(400).send({ error: 'Serviço inválido.' });
+    return loadServiceUsageCycles(getSqliteDatabase(), parsed.data.id);
+  });
 
   // O dia em que começa o ciclo da conta Starlink: é o período do total no cartão do consumo.
   app.put('/api/network/router/wan/usage/cycle', adminOnly, async (request, reply) => {

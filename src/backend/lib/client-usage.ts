@@ -4,8 +4,8 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-netw
 import { createTransport, isRouterConfigured, readClientUsageData, readRouterConfig, type RouterTransport } from './routeros';
 import { refreshUsageCounterForJob, usageCounterDisk } from './usage-counter';
 import { counterDelta, utcDay } from './wan-usage';
-import { cycleFor, cycleStartDay, dayInZone } from './fup';
-import { globalCycleDay, readFupSettings } from './fup-settings';
+import { cycleFor, cycleStartDay, dayInZone, loadFupUsage, stateFromEvents, usagePercent } from './fup';
+import { bytesPerGb, globalCycleDay, readFupSettings } from './fup-settings';
 
 export type ClientUsageCounter = { name: string; rxTotal: number; txTotal: number; rxLast: number; txLast: number; uptime: string };
 
@@ -95,4 +95,45 @@ export function loadClientUsage(db: Database.Database, now = new Date()) {
     .map(({ keep: _keep, ...row }) => row)
     .sort((a, b) => (b.cycleDownBytes + b.cycleUpBytes) - (a.cycleDownBytes + a.cycleUpBytes)
       || a.clientCode.localeCompare(b.clientCode) || a.serviceId - b.serviceId);
+}
+
+export type UsageCycle = {
+  start: string; end: string; period: string; current: boolean;
+  downBytes: number; upBytes: number; days: number; percent: number;
+  fup: 'AVISO' | 'LIMITADO' | null;
+};
+
+/**
+ * Consumo de um serviço ciclo a ciclo, do atual para trás, até ao primeiro dia medido
+ * (no máximo `max` ciclos). O ciclo atual é o do uso justo, para a % bater certo.
+ * ponytail: os ciclos passados usam o dia de início e a referência ATUAIS; se mudaram,
+ * os antigos não coincidem com os de então (não se guarda o histórico desses valores).
+ */
+export function loadServiceUsageCycles(db: Database.Database, serviceId: number, now = new Date(), max = 24) {
+  const settings = readFupSettings(db);
+  const perGb = bytesPerGb(settings);
+  const [service] = loadFupUsage(db, now, settings, { serviceId });
+  const first = service
+    ? (db.prepare('SELECT MIN(day) AS day FROM client_traffic_daily WHERE service_id = ?').get(serviceId) as { day: string | null }).day
+    : null;
+  if (!service || !first) return { referenceGb: service?.referenceGb ?? 0, bytesPerGb: perGb, cycles: [] as UsageCycle[] };
+  const usage = db.prepare(`SELECT COUNT(*) AS days, COALESCE(SUM(tx_bytes), 0) AS down, COALESCE(SUM(rx_bytes), 0) AS up
+    FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
+  const events = db.prepare('SELECT kind FROM fup_events WHERE service_id = ? AND period = ?');
+  const startDay = Number(service.cycle.start.slice(8, 10));
+  const cycles: UsageCycle[] = [];
+  let cycle: { start: string; end: string; period: string } = service.cycle;
+  while (cycles.length < max && cycle.end >= first) {
+    const { days, down, up } = usage.get(serviceId, cycle.start, cycle.end) as { days: number; down: number; up: number };
+    const state = stateFromEvents((events.all(serviceId, cycle.period) as Array<{ kind: string }>).map((event) => event.kind));
+    cycles.push({
+      start: cycle.start, end: cycle.end, period: cycle.period, current: cycles.length === 0,
+      downBytes: down, upBytes: up, days,
+      percent: usagePercent(down + up, service.referenceGb, perGb),
+      fup: state === 'LIMITADO' || state === 'AVISO' ? state : null
+    });
+    const previousDay = new Date(Date.UTC(Number(cycle.start.slice(0, 4)), Number(cycle.start.slice(5, 7)) - 1, startDay - 1)).toISOString().slice(0, 10);
+    cycle = cycleFor(previousDay, startDay);
+  }
+  return { referenceGb: service.referenceGb, bytesPerGb: perGb, cycles };
 }
