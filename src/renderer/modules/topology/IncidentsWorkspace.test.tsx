@@ -161,3 +161,45 @@ test('formatDuration', () => {
   expect(formatDuration(3 * 3600 + 5 * 60)).toBe('3 h 05 min');
   expect(formatDuration(26 * 3600)).toBe('1 d 2 h');
 });
+
+test('a causa da queda lê-se na tabela e corrige-se no detalhe', async () => {
+  const reboot: IncidentsResponse = { ...body, incidents: [{ ...body.incidents[0], status: 'resolved', endedAt: '2026-10-01 10:04:00', durationSeconds: 240, outageCause: 'power', causeSource: 'auto', siteName: 'Torre de Achada', observedDown: true }] };
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.includes('/api/auth/')) return new Response('{}', { status: 401 });
+    if (url.includes('/cause')) return new Response('{"ok":true}', { status: 200 });
+    return new Response(JSON.stringify(reboot), { status: 200 });
+  }));
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<AuthProvider><IncidentsWorkspace active /></AuthProvider>));
+  await settle();
+
+  const row = [...host.querySelectorAll<HTMLElement>('[role="row"]')][1];
+  expect(row.textContent).toContain('Corte de energia · Torre de Achada');
+  await act(async () => row.click());
+
+  const select = [...document.querySelectorAll('select')].find((node) => node.closest('.incidents-cause-field'))!;
+  expect(select.selectedOptions[0].textContent).toBe('Automática · Corte de energia · Torre de Achada');
+  await act(async () => {
+    select.value = 'reboot';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await settle();
+  const put = calls.find((call) => call.url.endsWith('/outages/1/cause'))!;
+  expect(put.init?.method).toBe('PUT');
+  expect(JSON.parse(String(put.init?.body))).toEqual({ startedAt: '2026-10-01 10:00:00', cause: 'reboot' });
+  await act(async () => root.unmount());
+});
+
+test('um reinício que a sonda não viu cair mostra-se como curto', async () => {
+  const short: IncidentsResponse = { ...body, incidents: [{ ...body.incidents[0], status: 'resolved', endedAt: '2026-10-01 10:00:00', durationSeconds: null, outageCause: 'reboot', causeSource: 'auto', observedDown: false }] };
+  const { host, root } = await mount(short);
+  const row = [...host.querySelectorAll<HTMLElement>('[role="row"]')][1];
+  expect(row.textContent).toContain('Reinício');
+  expect(row.textContent).toContain('Curta');
+  await act(async () => root.unmount());
+});

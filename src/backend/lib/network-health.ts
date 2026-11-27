@@ -212,8 +212,9 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     const uplinks = loadUplinks(db);
     const downsOf = db.prepare("SELECT at FROM network_probe_events WHERE target_kind = 'backbone' AND target_id = ? AND to_state = 'down' AND gap_before = 0 AND at >= ?");
     for (const row of antennas) {
-      row.restarts = (downsOf.all(row.id, windowStart) as Array<{ at: string }>)
+      const restarts = (downsOf.all(row.id, windowStart) as Array<{ at: string }>)
         .filter((event) => ['reboot', 'power', 'planned'].includes(readOutageCause(db, row.id, event.at, slack, uplinks).cause)).length;
+      if (restarts > 0) row.restarts = restarts;
     }
   }
   const clients = outages('assignment', CLIENT_NAMES).slice(0, 6);
