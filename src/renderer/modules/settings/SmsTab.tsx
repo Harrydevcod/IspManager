@@ -76,6 +76,10 @@ export function SmsTab({
 
   return (
     <>
+      <header className="settings-group-head sms-group-head wide-field">
+        <span className="settings-group-eyebrow">Canal</span>
+        <h3>Telemóvel ISPM SMS</h3>
+      </header>
       <Toggle
         title="Ligação à app móvel ISPM SMS"
         description="Ligar pede a password de administrador."
@@ -170,14 +174,22 @@ export function SmsTab({
         )}
       </div>
       <SmsRelayPanel />
-      {canManageMobile && <MobileAccessPanel />}
+      {canManageMobile && (
+        <>
+          <header className="settings-group-head sms-group-head wide-field">
+            <span className="settings-group-eyebrow">Acesso</span>
+            <h3>ISPM no telemóvel</h3>
+          </header>
+          <MobileAccessPanel />
+        </>
+      )}
       <SmsInbox />
+      <header className="settings-group-head sms-group-head wide-field">
+        <span className="settings-group-eyebrow">Envio</span>
+        <h3 id="sms-delivery-report-title">Relatório e cadência</h3>
+      </header>
       <section className="sms-delivery-report" aria-labelledby="sms-delivery-report-title">
         <div className="sms-delivery-report-head">
-          <div>
-            <span className="sms-delivery-report-eyebrow">Canal SMS</span>
-            <h3 id="sms-delivery-report-title">Relatório de entrega de SMS</h3>
-          </div>
           <Field
             className="sms-report-month"
             label="Mês"
@@ -210,7 +222,7 @@ export function SmsTab({
       </section>
       <Field
         className="field-short"
-        label="Intervalo de envio SMS (segundos)"
+        label="Intervalo de envio (segundos)"
         type="number"
         min={15}
         max={3600}
@@ -226,78 +238,84 @@ export function SmsTab({
         value={form.smsRetryGraceMinutes}
         onChange={(event) => onUpdate('smsRetryGraceMinutes', event.target.value)}
       />
-      <TemplateField
-        field="smsInvoiceIssuedTemplate"
-        label="SMS: emissão de fatura"
-        hint="Evite acentos: com eles cada SMS cai de 160 para 70 caracteres."
-        value={form.smsInvoiceIssuedTemplate}
-        recommended={fallbackSmsInvoiceIssuedTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsReceiptConfirmedTemplate"
-        label="SMS: confirmação de recibo"
-        value={form.smsReceiptConfirmedTemplate}
-        recommended={fallbackSmsReceiptConfirmedTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsPaymentOverdueTemplate"
-        label="SMS: atraso de pagamento"
-        value={form.smsPaymentOverdueTemplate}
-        recommended={fallbackSmsPaymentOverdueTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsSuspensionNoticeTemplate"
-        label="SMS: aviso de suspensão"
-        value={form.smsSuspensionNoticeTemplate}
-        recommended={fallbackSmsSuspensionNoticeTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsPaymentReminderTemplate"
-        label="SMS: lembrete antes do vencimento"
-        value={form.smsPaymentReminderTemplate}
-        recommended={fallbackSmsPaymentReminderTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsPaymentWarningTemplate"
-        label="SMS: atraso prolongado"
-        value={form.smsPaymentWarningTemplate}
-        recommended={fallbackSmsPaymentWarningTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsOutageTemplate"
-        label="SMS: avaria na rede"
-        value={form.smsOutageTemplate}
-        recommended={fallbackSmsOutageTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsRestoredTemplate"
-        label="SMS: serviço reposto"
-        value={form.smsRestoredTemplate}
-        recommended={fallbackSmsRestoredTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsGeneralTemplate"
-        label="SMS: mensagem geral"
-        value={form.smsGeneralTemplate}
-        recommended={fallbackSmsGeneralTemplate}
-        onUpdate={onUpdate}
-      />
-      <TemplateField
-        field="smsMaintenanceTemplate"
-        label="SMS: aviso de manutenção"
-        hint="Variáveis: {data} {inicio} {fim} {motivo} {empresa}."
-        value={form.smsMaintenanceTemplate}
-        recommended={fallbackSmsMaintenanceTemplate}
-        onUpdate={onUpdate}
-      />
+      <header className="settings-group-head sms-group-head wide-field">
+        <span className="settings-group-eyebrow">Mensagens</span>
+        <h3>Modelos de SMS</h3>
+      </header>
+      <p className="sms-group-note">Evite acentos: com eles cada SMS cai de 160 para 70 caracteres.</p>
+      <div className="sms-templates">
+        <TemplateField
+          field="smsInvoiceIssuedTemplate"
+          label="Emissão de fatura"
+          value={form.smsInvoiceIssuedTemplate}
+          recommended={fallbackSmsInvoiceIssuedTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsReceiptConfirmedTemplate"
+          label="Confirmação de recibo"
+          value={form.smsReceiptConfirmedTemplate}
+          recommended={fallbackSmsReceiptConfirmedTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsPaymentOverdueTemplate"
+          label="Atraso de pagamento"
+          value={form.smsPaymentOverdueTemplate}
+          recommended={fallbackSmsPaymentOverdueTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsSuspensionNoticeTemplate"
+          label="Aviso de suspensão"
+          value={form.smsSuspensionNoticeTemplate}
+          recommended={fallbackSmsSuspensionNoticeTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsPaymentReminderTemplate"
+          label="Lembrete antes do vencimento"
+          value={form.smsPaymentReminderTemplate}
+          recommended={fallbackSmsPaymentReminderTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsPaymentWarningTemplate"
+          label="Atraso prolongado"
+          value={form.smsPaymentWarningTemplate}
+          recommended={fallbackSmsPaymentWarningTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsOutageTemplate"
+          label="Avaria na rede"
+          value={form.smsOutageTemplate}
+          recommended={fallbackSmsOutageTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsRestoredTemplate"
+          label="Serviço reposto"
+          value={form.smsRestoredTemplate}
+          recommended={fallbackSmsRestoredTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsGeneralTemplate"
+          label="Mensagem geral"
+          value={form.smsGeneralTemplate}
+          recommended={fallbackSmsGeneralTemplate}
+          onUpdate={onUpdate}
+        />
+        <TemplateField
+          field="smsMaintenanceTemplate"
+          label="Aviso de manutenção"
+          hint="Variáveis: {data} {inicio} {fim} {motivo} {empresa}."
+          value={form.smsMaintenanceTemplate}
+          recommended={fallbackSmsMaintenanceTemplate}
+          onUpdate={onUpdate}
+        />
+      </div>
     </>
   );
 }
