@@ -63,7 +63,8 @@ export function MobileAccessPanel() {
   return (
     <div className="settings-test-whatsapp sms-relay-panel mobile-access-panel" role="group" aria-label="ISPM no telemóvel">
       <span className="sms-pairing-state" data-tone={status?.running ? 'success' : undefined} role="status">
-        {!status ? 'A verificar o ISPM no telemóvel…' : status.running ? `ISPM no telemóvel ativo em ${status.host}:${status.port}` : 'ISPM no telemóvel desligado'}
+        {/* O título do grupo já diz "ISPM no telemóvel": a linha diz só o estado. */}
+        {!status ? 'A verificar…' : status.running ? `Ativo em ${status.host}:${status.port}` : 'Desligado'}
       </span>
       {status && !status.running && (
         <div className="sms-relay-fields mobile-access-fields">
