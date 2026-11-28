@@ -57,6 +57,7 @@ export function StoredLog() {
   const [search, setSearch] = useState('');
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [showMachine, setShowMachine] = useState(false);
+  const [showRoutine, setShowRoutine] = useState(false);
   // Uma resposta que não é a lista (sessão caída, versão antiga) conta como ainda por ler.
   const list = Array.isArray(days.data) ? days.data : null;
   const day = picked ?? list?.[0]?.day ?? null;
@@ -94,7 +95,7 @@ export function StoredLog() {
   // A resposta de um dia pode chegar depois de se escolher outro: só serve a do dia à vista.
   const loaded = history.data?.day === day ? history.data : null;
   const needle = search.trim().toLowerCase();
-  const rows = visibleLogEntries(loaded?.entries ?? [], { onlyProblems, showMachine })
+  const rows = visibleLogEntries(loaded?.entries ?? [], { onlyProblems, showMachine, showRoutine })
     // Procura-se pela frase e pela linha do router: um IP ou um MAC estão nas duas.
     .filter((entry) => !needle || `${entry.topics} ${entry.text} ${entry.message}`.toLowerCase().includes(needle))
     // O dia já está escolhido: na coluna fica só a hora.
@@ -111,6 +112,7 @@ export function StoredLog() {
         <Field type="search" label="Procurar" className="router-log-search" value={search}
           onChange={(event) => setSearch(event.target.value)} placeholder="IP, MAC ou texto" />
         <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
+        <Toggle title="DHCP e PPPoE de rotina" wide={false} checked={showRoutine} onChange={(event) => setShowRoutine(event.target.checked)} />
         <Toggle title="Manutenção do ISPM" wide={false} checked={showMachine} onChange={(event) => setShowMachine(event.target.checked)} />
         <Button variant="secondary" leadingIcon={<Download size={14} aria-hidden />} disabled={!loaded} onClick={() => loaded && download(loaded)}>
           Exportar .txt

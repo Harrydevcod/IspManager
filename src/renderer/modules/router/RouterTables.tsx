@@ -231,8 +231,9 @@ export const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
 export function LogView({ log }: { log: RouterLog }) {
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [showMachine, setShowMachine] = useState(false);
+  const [showRoutine, setShowRoutine] = useState(false);
   const findings = logFindings(log);
-  const rows = visibleLogEntries(log.entries, { onlyProblems, showMachine });
+  const rows = visibleLogEntries(log.entries, { onlyProblems, showMachine, showRoutine });
   return (
     <>
       {findings.length > 0 && (
@@ -256,6 +257,7 @@ export function LogView({ log }: { log: RouterLog }) {
       )}
       <div className="router-log-filter">
         <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
+        <Toggle title="DHCP e PPPoE de rotina" wide={false} checked={showRoutine} onChange={(event) => setShowRoutine(event.target.checked)} />
         <Toggle title="Manutenção do ISPM" wide={false} checked={showMachine} onChange={(event) => setShowMachine(event.target.checked)} />
       </div>
       <DataTable
