@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatBitrate, formatBytes, profileRows, SESSION_STATE } from './router-api';
+import { formatBitrate, formatBytes, profileRows, SESSION_STATE, visibleLogEntries } from './router-api';
 
 describe('formatBytes', () => {
   test('usa unidades binárias com vírgula decimal (pt-PT)', () => {
@@ -55,5 +55,18 @@ describe('formatBitrate', () => {
     expect(formatBitrate(12_400_000)).toBe('12,4 Mbit/s');
     expect(formatBitrate(1_500_000_000)).toBe('1,5 Gbit/s');
     expect(formatBitrate(null)).toBe('—');
+  });
+});
+
+describe('visibleLogEntries', () => {
+  const row = (id: string, topics: string, extra: { machine?: boolean; routine?: boolean } = {}) =>
+    ({ id, time: '06:00:00', topics, message: id, text: id, kind: 'outro', machine: false, ...extra });
+  const rows = [row('rotina', 'dhcp,info', { routine: true }), row('maquina', 'system,info', { machine: true }), row('queda', 'pppoe,info'), row('aviso', 'dhcp,warning')];
+  const ids = (options: { onlyProblems: boolean; showMachine: boolean; showRoutine: boolean }) => visibleLogEntries(rows, options).map((entry) => entry.id);
+
+  test('a rotina e a manutenção só entram a pedido', () => {
+    expect(ids({ onlyProblems: false, showMachine: false, showRoutine: false })).toEqual(['queda', 'aviso']);
+    expect(ids({ onlyProblems: false, showMachine: false, showRoutine: true })).toEqual(['rotina', 'queda', 'aviso']);
+    expect(ids({ onlyProblems: true, showMachine: true, showRoutine: true })).toEqual(['aviso']);
   });
 });

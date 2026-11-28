@@ -398,7 +398,7 @@ describe('Router de gestão', () => {
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(2);
     expect(container.textContent).toContain('Login falhado do utilizador admin a partir de 10.0.0.9 por winbox');
     expect(container.querySelector('.data-table-row [title^="login failure for user admin"]')).not.toBeNull();
-    const [problems, machine] = container.querySelectorAll('#router-panel-log input[type="checkbox"]');
+    const [problems, , machine] = container.querySelectorAll('#router-panel-log input[type="checkbox"]');
     await click(machine);
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(3);
     expect(container.textContent).toContain('Contador das WAN gravou os totais');

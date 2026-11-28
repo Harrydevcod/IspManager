@@ -158,3 +158,34 @@ describe('leitura das linhas', () => {
     expect(one('ANTENA EM BAIXO: CPE710 Espia', 'script,warning')).toMatchObject({ text: 'ANTENA EM BAIXO: CPE710 Espia', kind: 'outro', machine: false });
   });
 });
+
+describe('rotina', () => {
+  test('o vaivém normal de DHCP e PPPoE vem marcado como rotina', () => {
+    for (const [message, topics] of [
+      ['dhcp-LAN assigned 192.168.2.51 for AA:BB:CC:00:00:01 Galaxy-A15', 'dhcp,info'],
+      ['dhcp-LAN deassigned 192.168.2.51 for AA:BB:CC:00:00:01 Galaxy-A15', 'dhcp,info'],
+      ['<pppoe-skn001>: connected', 'pppoe,ppp,info'],
+      ['<pppoe-skn001>: authenticated', 'pppoe,ppp,info'],
+      ['<pppoe-skn001>: terminating... - disconnected', 'pppoe,ppp,info'],
+      ['PPPoE connection established from AA:BB:CC:00:00:02', 'pppoe,info']
+    ]) expect(one(message, topics), message).toMatchObject({ routine: true, machine: false });
+  });
+
+  test('as quedas e as falhas nunca são rotina', () => {
+    for (const [message, topics] of [
+      ['<pppoe-skn001>: terminating... - peer is not responding', 'pppoe,ppp,info'],
+      ['PPPoE connection from AA:BB:CC:00:00:02 was already active - closing previous one', 'pppoe,info'],
+      ['event down [ type: simple, host: 192.168.2.20 ]', 'netwatch,info'],
+      ['LAN3 link down', 'interface,info']
+    ]) expect(one(message, topics), message).toMatchObject({ routine: false });
+  });
+
+  test('a oferta DHCP sem resposta atrás de um relé também se lê', () => {
+    expect(one('dhcp-LAN offering lease 192.168.2.51 for AA:BB:CC:00:00:01 to eth AA:BB:CC:00:00:09 without success', 'dhcp,warning'))
+      .toMatchObject({ kind: 'dhcp', routine: false, text: 'DHCP: 192.168.2.51 oferecido a AA:BB:CC:00:00:01 sem resposta' });
+  });
+
+  test('o fecho do diagnóstico de queda é manutenção do ISPM', () => {
+    expect(one('ispm-queda: fim', 'script,info')).toMatchObject({ machine: true, kind: 'vigia' });
+  });
+});

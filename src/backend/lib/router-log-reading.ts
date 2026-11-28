@@ -8,7 +8,8 @@ import type { RouterLogEntry } from './routeros';
 export type LogKind = 'contador' | 'leitura_ispm' | 'pppoe' | 'dhcp' | 'dhcp_estranho' | 'vigia' | 'porta' | 'login' | 'config' | 'outro';
 
 /** `message` é a linha do router (já encurtada); `text` é a frase que o ecrã mostra. */
-export type ReadLogEntry = RouterLogEntry & { text: string; kind: LogKind; machine: boolean };
+/** `routine`: o vaivém normal de DHCP e PPPoE, que enche o registo e não pede nada a ninguém. */
+export type ReadLogEntry = RouterLogEntry & { text: string; kind: LogKind; machine: boolean; routine: boolean };
 
 export type LogLookups = {
   /** O utilizador com que o ISPM entra no router. */
@@ -105,7 +106,7 @@ export function compactEntries(entries: RouterLogEntry[]): RouterLogEntry[] {
   return entries.filter((entry) => !continued.has(entry) && !orphans.has(entry) && !SESSION_DETECT.test(entry.message.trim())).map(shorten);
 }
 
-type Reading = { text: string; kind: LogKind; machine?: boolean };
+type Reading = { text: string; kind: LogKind; machine?: boolean; routine?: boolean };
 type Rule = { pattern: RegExp; read: (match: RegExpExecArray, lookups: LogLookups) => Reading };
 
 const withClient = (login: string, lookups: LogLookups) => {
@@ -198,6 +199,8 @@ const RULES: Rule[] = [
     })
   },
   { pattern: COUNTER_FRAGMENT, read: () => ({ kind: 'contador', machine: true, text: 'Contador do ISPM: resto de uma gravação' }) },
+  // O fecho do diagnóstico de queda do ISPM; a linha com o MAC e a porta fica à vista.
+  { pattern: /^ispm-queda: fim$/, read: () => ({ kind: 'vigia', machine: true, text: 'Diagnóstico de queda do ISPM terminou' }) },
   {
     pattern: /^user (\S+) logged (in|out)(?: from (\S+))?(?: via (\S+))?$/,
     read: (m, lookups) => {
@@ -223,11 +226,15 @@ const RULES: Rule[] = [
   },
   {
     pattern: /^<pppoe-(.+?)>: terminating\.\.\. - (.+)$/,
-    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: a sessão caiu — ${PPPOE_REASONS[m[2]] ?? m[2]}` })
+    // "- disconnected" é o cliente a fechar a sessão: rotina. As outras razões são quedas.
+    read: (m, lookups) => ({
+      kind: 'pppoe', routine: m[2] === 'disconnected',
+      text: `PPPoE ${withClient(m[1], lookups)}: a sessão caiu — ${PPPOE_REASONS[m[2]] ?? m[2]}`
+    })
   },
   {
     pattern: /^<pppoe-(.+?)>: (connected|authenticated|disconnected|terminating\.\.\.)$/,
-    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: ${PPPOE_STATES[m[2]]}` })
+    read: (m, lookups) => ({ kind: 'pppoe', routine: true, text: `PPPoE ${withClient(m[1], lookups)}: ${PPPOE_STATES[m[2]]}` })
   },
   {
     pattern: /^<[0-9a-f]+>: user (\S+) authentication failed$/,
@@ -236,18 +243,18 @@ const RULES: Rule[] = [
   {
     // Medido no CHR 7.24.2: a conta da sessão, com o tempo ligado em segundos à saída.
     pattern: /^(\S+) logged in, (\S+) from (\S+)$/,
-    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: entrou com o endereço ${m[2]}` })
+    read: (m, lookups) => ({ kind: 'pppoe', routine: true, text: `PPPoE ${withClient(m[1], lookups)}: entrou com o endereço ${m[2]}` })
   },
   {
     pattern: /^(\S+) logged out, (\d+) \d+ \d+ \d+ \d+ from \S+$/,
-    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: saiu ao fim de ${duration(Number(m[2]))}` })
+    read: (m, lookups) => ({ kind: 'pppoe', routine: true, text: `PPPoE ${withClient(m[1], lookups)}: saiu ao fim de ${duration(Number(m[2]))}` })
   },
   { pattern: /^router rebooted\b.*$/, read: () => ({ kind: 'outro', text: 'O router reiniciou' }) },
   {
     pattern: /^PPPoE connection established from (\S+)$/,
     read: (m, lookups) => {
       const client = lookups.aboutMac(m[1].toUpperCase()).clientName;
-      return { kind: 'pppoe', text: `Pedido de ligação PPPoE de ${m[1].toUpperCase()}${client ? ` (${client})` : ''}` };
+      return { kind: 'pppoe', routine: true, text: `Pedido de ligação PPPoE de ${m[1].toUpperCase()}${client ? ` (${client})` : ''}` };
     }
   },
   {
@@ -263,11 +270,12 @@ const RULES: Rule[] = [
     read: (m, lookups) => {
       const mac = m[3].toUpperCase();
       const who = lookups.aboutMac(mac).clientName ?? m[4];
-      return { kind: 'dhcp', text: `DHCP: ${m[2]} ${m[1] === 'assigned' ? 'entregue a' : 'libertado por'} ${mac}${who ? ` (${who})` : ''}` };
+      return { kind: 'dhcp', routine: true, text: `DHCP: ${m[2]} ${m[1] === 'assigned' ? 'entregue a' : 'libertado por'} ${mac}${who ? ` (${who})` : ''}` };
     }
   },
   {
-    pattern: /^\S+ offering lease (\S+) for (\S+) without success$/,
+    // Atrás de um relé vem "for <cliente> to eth <relé>": 2 769 linhas em 14 dias sem regra (11/2026).
+    pattern: /^\S+ offering lease (\S+) for (\S+)(?: to \S+ \S+)? without success$/,
     read: (m, lookups) => {
       const mac = m[2].toUpperCase();
       const client = lookups.aboutMac(mac).clientName;
@@ -317,9 +325,9 @@ export function readLog(entries: RouterLogEntry[], lookups: LogLookups): ReadLog
       const match = rule.pattern.exec(message);
       if (match) {
         const reading = rule.read(match, lookups);
-        return { ...line, text: reading.text, kind: reading.kind, machine: reading.machine ?? false };
+        return { ...line, text: reading.text, kind: reading.kind, machine: reading.machine ?? false, routine: reading.routine ?? false };
       }
     }
-    return { ...line, text: message, kind: 'outro', machine: false };
+    return { ...line, text: message, kind: 'outro', machine: false, routine: false };
   });
 }
